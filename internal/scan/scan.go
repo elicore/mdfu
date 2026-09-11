@@ -10,10 +10,10 @@ import (
 
 // Options controls WalkMarkdown behavior.
 type Options struct {
-	Root              string
-	IncludeHidden     bool
-	RespectGitignore  bool
-	Limit             int
+	Root             string
+	IncludeHidden    bool
+	RespectGitignore bool
+	Limit            int
 }
 
 // WalkMarkdown walks opts.Root and returns sorted paths of *.md files

@@ -48,20 +48,20 @@ func SetFilter(f FilterFunc) {
 // Model is the BubbleTea model for the picker. It is kept pure enough
 // for headless unit tests: drive it with tea.KeyMsg values via Update.
 type Model struct {
-	items      []Item
-	filtered   []Item
-	filter     FilterFunc
-	input      textinput.Model
-	cursor     int
-	offset     int
-	selected   map[string]bool
-	showPrev   bool
-	showArch   bool
-	limit      int
-	width      int
-	height     int
-	confirmed  bool
-	aborted    bool
+	items     []Item
+	filtered  []Item
+	filter    FilterFunc
+	input     textinput.Model
+	cursor    int
+	offset    int
+	selected  map[string]bool
+	showPrev  bool
+	showArch  bool
+	limit     int
+	width     int
+	height    int
+	confirmed bool
+	aborted   bool
 }
 
 // NewModel builds a Model with default (substring) filtering.

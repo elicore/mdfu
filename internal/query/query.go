@@ -9,23 +9,23 @@ import (
 
 // DateFilter represents a date range constraint on a document date field.
 type DateFilter struct {
-	Field string
-	From, To *time.Time
+	Field            string
+	From, To         *time.Time
 	FromIncl, ToIncl bool
 }
 
 // Query is the parsed representation of a single-box search input.
 type Query struct {
-	Bare []string
-	Tags []string
-	NotTags []string
-	DocType string
-	Title string
-	Status string
-	Path string
-	Generic map[string]string
+	Bare             []string
+	Tags             []string
+	NotTags          []string
+	DocType          string
+	Title            string
+	Status           string
+	Path             string
+	Generic          map[string]string
 	Created, Updated *DateFilter
-	Raw string
+	Raw              string
 }
 
 // Parse parses the input string into a Query.
