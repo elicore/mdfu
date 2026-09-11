@@ -67,11 +67,14 @@ testdata/{okf,portent,generic,edge}/
 Deps: `gopkg.in/yaml.v3`, `charmbracelet/bubbletea+bubbles+lipgloss`, `sahilm/fuzzy`, stdlib rest. No tcell-based fuzzyfinder lib.
 
 ## Track split (each = one worktree + one subagent)
-- Track A (scaffold+scan): go.mod, cmd skeleton + flag parsing, internal/scan (WalkDir, hidden/ignore flags, parallel read hook). Branch `feat/scan`.
-- Track B (parse+model): internal/model (contract above) + internal/parse + testdata fixtures (OKF v0.2 metric + computation, OKF v0.1 timestamp, Portent Responsibility, generic, none, bad YAML). Branch `feat/parse`.
-- Track C (query+search): internal/query + internal/search (filter + sahilm/fuzzy rank). Table tests. Branch `feat/search`.
-- Track D (cli-output): --filter mode wiring + internal/output (paths/json). Depends on A+B+C interfaces only — stub against contract. Branch `feat/cli`.
-- Track E (tui): internal/tui BubbleTea (input/list/preview/status, archived toggle, multi-select). Depends on interfaces only. Branch `feat/tui`.
+- Track A (scaffold+scan): DONE (`d2c7a30`, merged). `cmd` skeleton + `internal/scan` walker.
+- Track B (parse+model): DONE (`df06910`, merged). Canonical `internal/model` + `internal/parse` + fixtures.
+- Track C (query+search): DONE (`6bace15`, merged). `internal/query` + `internal/search`.
+- Track D (cli-output): DONE as stub (`282802d`, merged). `internal/output` formatters real; `runFilterStub` still placeholder — to be replaced by Track F.
+- Track E (tui): DONE as standalone (`63afefa`, merged). `internal/tui` BubbleTea picker; live `FilterFunc` wiring pending in Track F.
+- Track F (wire-up): PENDING. Replace `runFilterStub` with real scan→parse→query→rank→output pipeline; wire TUI `Run` with live filter; honor `--root/--hidden/--limit`, archived-hidden-by-default. Branch `feat/wire`.
+- Track G (tests): PENDING. Library-level functional + regression suite (no TTY). Branch `feat/tests`.
+- Track H (docs): PENDING. README + examples + screenshot. Branch `feat/docs`.
 
 Integration order: A+B → C → D+E → main. Each track must `go build ./... && go test ./...` green in its worktree before merge.
 
