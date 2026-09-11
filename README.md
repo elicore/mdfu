@@ -2,11 +2,10 @@
 
 Fuzzy finder for Markdown notes — search body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`--filter`, fzf-compatible).
 
-> Status note: `--filter` output wiring and live TUI wiring land in Track F (`feat/wire`).
-> In this snapshot `cmd/mdfind` parses all documented flags and the formatters are real,
-> but `--filter` still prints placeholder results (see "Verification status" below).
-> Every example's *match set* was verified against the real
-> `scan → parse → query → search` libraries in this worktree.
+All features are implemented and merged: `--filter` runs the real
+`scan → parse → query → search → output` pipeline (exit `0` on match,
+`1` on no match, `2` on usage error) and the TUI filters live.
+Every example below was verified against the built binary.
 
 ## Install
 
@@ -29,11 +28,10 @@ The repo ships fixtures under `testdata/` covering every supported frontmatter f
 ```sh
 go build -o mdfind ./cmd/mdfind
 
-# Interactive picker over the fixtures (Track F wiring; currently a stub message)
+# Interactive picker over the fixtures
 ./mdfind --root testdata
 
-# Non-interactive, fzf-compatible (match sets below verified at library level;
-# binary print-through finalizes in Track F)
+# Non-interactive, fzf-compatible (all live-verified; exit 0 match / 1 no-match)
 ./mdfind --root testdata --filter "type:Task"
 ./mdfind --root testdata --filter "tag:launch"
 ./mdfind --root testdata --filter "status:Draft"
@@ -108,8 +106,8 @@ Exit codes: `0` = at least one match, `1` = no match, `2` = usage error (e.g. ba
 
 ### Examples (against `testdata/`)
 
-Match sets verified headlessly against the real `scan → parse → query → search`
-libraries in this worktree (binary print-through finalizes in Track F):
+Match sets verified live against the built binary
+(`go build -o mdfind ./cmd/mdfind`; exit `0` on match, `1` on no match):
 
 ```sh
 # 1. Exact type lookup → testdata/portent-task.md
@@ -152,9 +150,9 @@ Launch by omitting `--filter`:
 mdfind [--root DIR] [--hidden] [--limit N]
 ```
 
-Type to narrow (bare words fuzzy, `key:value` hard-filters once Track F wires the
-real `FilterFunc`; the picker already supports injecting it via `tui.SetFilter` /
-`RunWithFilter`). `Enter` prints the selection (pipeable to editors/fzf-style flows).
+Type to narrow (bare words fuzzy, `key:value` hard-filters via the live
+`FilterFunc`: scan → parse → query → rank on every keystroke).
+`Enter` prints the selection (pipeable to editors/fzf-style flows).
 
 Keybindings (from `internal/tui/tui.go`, `Model.Update`):
 
@@ -236,7 +234,7 @@ cat docs/screenshot.txt
 
 ```text
 cmd/mdfind/main.go      CLI flags (--root/--hidden/--no-ignore/--limit/--filter/--format)
-cmd/mdfind/filter.go    --filter plumbing (formatters wired; scan→query→search lands in Track F)
+cmd/mdfind/filter.go    --filter pipeline (scan→parse→query→rank→output)
 internal/model/         Unified Document contract + SearchBlob (shared by all tracks)
 internal/scan/          WalkDir: *.md discovery, hidden/symlink/.git handling
 internal/parse/         Frontmatter split + YAML + normalizers → Document
@@ -255,15 +253,10 @@ go build ./...
 go test ./...
 ```
 
-## Verification status (this track)
+## Verification status
 
-- Live-verified against the built binary: `go build` ok; `--help` flag set
-  (`--root/--hidden/--no-ignore/--limit/--filter/--format`); `--format json|vimgrep`
-  output shape; invalid `--format bogus` → exit `2`; `go vet`/`go test ./...` green.
-- Library-verified (throwaway harness over real `scan`+`parse`+`query`+`search`,
-  deleted afterwards): match sets for all 8 `--filter` examples above, plus
-  `organized:true`, `tag:-launch`, `before:/after:/date:` ranges, and the
-  `resource:`-miss/unknown-key-miss behavior.
-- Written against spec (final print-through + exit `0`/`1` + live TUI filtering
-  land in Track F): exact `--filter` stdout bytes and the no-match exit code.
+- Live-verified against the built binary (post Track F merge): all 8 `--filter`
+  examples above plus `--format json|vimgrep`, `--limit 1`, invalid
+  `--format bogus` → exit `2`, no-match → exit `1`; `go vet`/`go test ./...` green
+  (unit + `tests/` functional/regression suites).
 - `docs/screenshot.txt` is a genuine `Model.View()` render, not hand-drawn.

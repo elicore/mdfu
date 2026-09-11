@@ -72,9 +72,15 @@ Deps: `gopkg.in/yaml.v3`, `charmbracelet/bubbletea+bubbles+lipgloss`, `sahilm/fu
 - Track C (query+search): DONE (`6bace15`, merged). `internal/query` + `internal/search`.
 - Track D (cli-output): DONE as stub (`282802d`, merged). `internal/output` formatters real; `runFilterStub` still placeholder — to be replaced by Track F.
 - Track E (tui): DONE as standalone (`63afefa`, merged). `internal/tui` BubbleTea picker; live `FilterFunc` wiring pending in Track F.
-- Track F (wire-up): PENDING. Replace `runFilterStub` with real scan→parse→query→rank→output pipeline; wire TUI `Run` with live filter; honor `--root/--hidden/--limit`, archived-hidden-by-default. Branch `feat/wire`.
-- Track G (tests): PENDING. Library-level functional + regression suite (no TTY). Branch `feat/tests`.
-- Track H (docs): PENDING. README + examples + screenshot. Branch `feat/docs`.
+- Track F (wire-up): DONE. Real scan→parse→query→rank→output pipeline + live TUI FilterFunc; `--archived` flag. Branch `feat/wire`.
+- Track G (tests): DONE. `tests/functional_test.go` (11 tests) + `tests/regression_test.go` (10 tests). Branch `feat/tests`.
+- Track H (docs): DONE. README + examples + headless TUI screenshot. Branch `feat/docs`.
+
+## Status (post-integration)
+- M1: DONE — build green; scan + parse fixtures verified.
+- M2: DONE — query table tests + rank title-boost verified.
+- M3: DONE — `--filter "type:Task"` etc. print real ranked paths; `--format json|vimgrep` valid; exit 0/1/2 verified live.
+- M4: DONE (wired; perf benchmark pending) — TUI opens with live filtering, Enter prints selection.
 
 Integration order: A+B → C → D+E → main. Each track must `go build ./... && go test ./...` green in its worktree before merge.
 
