@@ -9,6 +9,9 @@ import (
 	"github.com/anomalyco/mdfu/internal/tui"
 )
 
+// version is set at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	root := flag.String("root", ".", "root directory to scan")
 	hidden := flag.Bool("hidden", false, "include hidden files and directories")
@@ -17,7 +20,13 @@ func main() {
 	filter := flag.String("filter", "", "non-interactive filter query")
 	format := flag.String("format", "paths", "output format: paths|json|vimgrep")
 	archived := flag.Bool("archived", false, "include archived documents")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("mdfu", version)
+		return
+	}
 
 	if *format != "paths" && *format != "json" && *format != "vimgrep" {
 		fmt.Fprintf(os.Stderr, "invalid --format %q: must be paths|json|vimgrep\n", *format)
