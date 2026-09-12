@@ -26,14 +26,14 @@ MAU grew month over month, driven by onboarding improvements.
 `,
 		"task.md": `---
 type: Task
-title: Ship mdfind MVP
+title: Ship mdfu MVP
 tags: launch
 status: Draft
 organized: true
 archived: true
 ---
 
-# Ship mdfind MVP
+# Ship mdfu MVP
 
 Finish the deploy checklist before launch day.
 `,

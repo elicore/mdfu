@@ -1,10 +1,10 @@
 > Search... (bare words fuzzy, key:value hard-fil…
-> [ ] Ship mdfind MVP [Task]  testdata/portent-task.md
+> [ ] Ship mdfu MVP [Task]  testdata/portent-task.md
   [ ] Monthly Active Users [Metric]  testdata/okf-v02-metric.md
   [ ] Legacy Retention Claim [Claim]  testdata/okf-v01-legacy.md
   [ ] Generic Note  testdata/generic.md
 Preview
-Title: Ship mdfind MVP
+Title: Ship mdfu MVP
 Path: testdata/portent-task.md
 Type: Task
 Tags: tolaria, launch, Project Atlas

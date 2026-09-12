@@ -1,4 +1,4 @@
-# mdfind
+# mdfu
 
 Fuzzy finder for Markdown notes — search body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`--filter`, fzf-compatible).
 
@@ -13,12 +13,12 @@ Requires Go 1.25+.
 
 ```sh
 # Latest release binary into $GOBIN
-go install github.com/anomalyco/mdfind/cmd/mdfind@latest
+go install github.com/anomalyco/mdfu/cmd/mdfu@latest
 
 # Or build from source
-git clone https://github.com/anomalyco/mdfind
-cd mdfind
-go build -o mdfind ./cmd/mdfind
+git clone https://github.com/anomalyco/mdfu
+cd mdfu
+go build -o mdfu ./cmd/mdfu
 ```
 
 ## Quickstart
@@ -26,21 +26,21 @@ go build -o mdfind ./cmd/mdfind
 The repo ships fixtures under `testdata/` covering every supported frontmatter family:
 
 ```sh
-go build -o mdfind ./cmd/mdfind
+go build -o mdfu ./cmd/mdfu
 
 # Interactive picker over the fixtures
-./mdfind --root testdata
+./mdfu --root testdata
 
 # Non-interactive, fzf-compatible (all live-verified; exit 0 match / 1 no-match)
-./mdfind --root testdata --filter "type:Task"
-./mdfind --root testdata --filter "tag:launch"
-./mdfind --root testdata --filter "status:Draft"
-./mdfind --root testdata --filter "kumquat zebra"
+./mdfu --root testdata --filter "type:Task"
+./mdfu --root testdata --filter "tag:launch"
+./mdfu --root testdata --filter "status:Draft"
+./mdfu --root testdata --filter "kumquat zebra"
 ```
 
 | Fixture | Family | What's inside |
 |---|---|---|
-| `testdata/portent-task.md` | Portent (`type: Task`) | `Ship mdfind MVP`, tags `tolaria, launch, [[Project Atlas]]`, `status: Draft`, `created: 2026-01` |
+| `testdata/portent-task.md` | Portent (`type: Task`) | `Ship mdfu MVP`, tags `tolaria, launch, [[Project Atlas]]`, `status: Draft`, `created: 2026-01` |
 | `testdata/okf-v02-metric.md` | OKF v0.2 (`type: Metric`) | `Monthly Active Users`, `generated.at` / `verified` attestations, `sources[]` |
 | `testdata/okf-v01-legacy.md` | OKF v0.1 (`type: Claim`) | H1-derived content, legacy `timestamp: 2023-11-15`, comma-string tags |
 | `testdata/generic.md` | Generic (no `type`) | Custom keys (`author: bob`, `views: 42`) |
@@ -89,7 +89,7 @@ the TUI/`FilterArchived` layer applies the hiding.)
 ## CLI reference
 
 ```sh
-mdfind [--root DIR] [--hidden] [--no-ignore] [--limit N]
+mdfu [--root DIR] [--hidden] [--no-ignore] [--limit N]
        [--filter QUERY] [--format paths|json|vimgrep]
 ```
 
@@ -107,39 +107,39 @@ Exit codes: `0` = at least one match, `1` = no match, `2` = usage error (e.g. ba
 ### Examples (against `testdata/`)
 
 Match sets verified live against the built binary
-(`go build -o mdfind ./cmd/mdfind`; exit `0` on match, `1` on no match):
+(`go build -o mdfu ./cmd/mdfu`; exit `0` on match, `1` on no match):
 
 ```sh
 # 1. Exact type lookup → testdata/portent-task.md
-mdfind --root testdata --filter "type:Task"
+mdfu --root testdata --filter "type:Task"
 
 # 2. Tag lookup (case-insensitive; [[wikilinks]] stripped) → testdata/portent-task.md
-mdfind --root testdata --filter "tag:launch"
+mdfu --root testdata --filter "tag:launch"
 
 # 3. Lifecycle status (case-insensitive) → okf-v01-legacy.md + portent-task.md
-mdfind --root testdata --filter "status:Draft"
+mdfu --root testdata --filter "status:Draft"
 
 # 4. Bare-word body search (AND-fuzzy); broken-YAML file stays searchable → bad-yaml.md
-mdfind --root testdata --filter "kumquat zebra"
+mdfu --root testdata --filter "kumquat zebra"
 
 # 5. Generic key:value on custom frontmatter → generic.md
-mdfind --root testdata --filter "author:bob"
+mdfu --root testdata --filter "author:bob"
 
 # 6. Exact date on normalized CreatedAt → okf-v02-metric.md
-mdfind --root testdata --filter "created:2024-05-01"
+mdfu --root testdata --filter "created:2024-05-01"
 
 # 7. Combined hard filters → okf-v01-legacy.md
-mdfind --root testdata --filter "type:Claim tag:retention"
+mdfu --root testdata --filter "type:Claim tag:retention"
 
 # 8. Tag negation (everything except the launch-tagged task)
-mdfind --root testdata --filter "tag:-launch"
+mdfu --root testdata --filter "tag:-launch"
 
 # Same queries, other formats (formatters live: internal/output)
-mdfind --root testdata --filter "status:Draft" --format json
-mdfind --root testdata --filter "status:Draft" --format vimgrep
+mdfu --root testdata --filter "status:Draft" --format json
+mdfu --root testdata --filter "status:Draft" --format vimgrep
 
 # Cap the list
-mdfind --root testdata --filter "status:Draft" --limit 1
+mdfu --root testdata --filter "status:Draft" --limit 1
 ```
 
 ## TUI
@@ -147,7 +147,7 @@ mdfind --root testdata --filter "status:Draft" --limit 1
 Launch by omitting `--filter`:
 
 ```sh
-mdfind [--root DIR] [--hidden] [--limit N]
+mdfu [--root DIR] [--hidden] [--limit N]
 ```
 
 Type to narrow (bare words fuzzy, `key:value` hard-filters via the live
@@ -207,12 +207,12 @@ see `docs/screenshot.txt`):
 
 ```text
 > Search... (bare words fuzzy, key:value hard-fil…
-> [ ] Ship mdfind MVP [Task]  testdata/portent-task.md
+> [ ] Ship mdfu MVP [Task]  testdata/portent-task.md
   [ ] Monthly Active Users [Metric]  testdata/okf-v02-metric.md
   [ ] Legacy Retention Claim [Claim]  testdata/okf-v01-legacy.md
   [ ] Generic Note  testdata/generic.md
 Preview
-Title: Ship mdfind MVP
+Title: Ship mdfu MVP
 Path: testdata/portent-task.md
 Type: Task
 Tags: tolaria, launch, Project Atlas
@@ -233,8 +233,8 @@ cat docs/screenshot.txt
 ## Project layout
 
 ```text
-cmd/mdfind/main.go      CLI flags (--root/--hidden/--no-ignore/--limit/--filter/--format)
-cmd/mdfind/filter.go    --filter pipeline (scan→parse→query→rank→output)
+cmd/mdfu/main.go      CLI flags (--root/--hidden/--no-ignore/--limit/--filter/--format)
+cmd/mdfu/filter.go    --filter pipeline (scan→parse→query→rank→output)
 internal/model/         Unified Document contract + SearchBlob (shared by all tracks)
 internal/scan/          WalkDir: *.md discovery, hidden/symlink/.git handling
 internal/parse/         Frontmatter split + YAML + normalizers → Document

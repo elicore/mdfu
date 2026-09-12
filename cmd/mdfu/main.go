@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anomalyco/mdfind/internal/search"
-	"github.com/anomalyco/mdfind/internal/tui"
+	"github.com/anomalyco/mdfu/internal/search"
+	"github.com/anomalyco/mdfu/internal/tui"
 )
 
 func main() {
@@ -36,7 +36,7 @@ func main() {
 func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchived bool, limit int) int {
 	docs, err := loadDocuments(root, includeHidden, respectGitignore)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "mdfind:", err)
+		fmt.Fprintln(os.Stderr, "mdfu:", err)
 		return 1
 	}
 	if !includeArchived {
@@ -53,7 +53,7 @@ func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchi
 		Preview:      true,
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "mdfind:", err)
+		fmt.Fprintln(os.Stderr, "mdfu:", err)
 		return 1
 	}
 	for _, it := range selected {

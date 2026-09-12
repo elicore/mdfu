@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/anomalyco/mdfind/internal/model"
+	"github.com/anomalyco/mdfu/internal/model"
 )
 
 // Item is the TUI's view of a searchable document.

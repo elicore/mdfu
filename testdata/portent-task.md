@@ -1,6 +1,6 @@
 ---
 type: Task
-title: Ship mdfind MVP
+title: Ship mdfu MVP
 tags: "tolaria, launch, [[Project Atlas]]"
 status: Draft
 organized: true

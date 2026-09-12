@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anomalyco/mdfind/internal/model"
+	"github.com/anomalyco/mdfu/internal/model"
 	"gopkg.in/yaml.v3"
 )
 

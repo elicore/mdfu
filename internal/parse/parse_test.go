@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anomalyco/mdfind/internal/model"
+	"github.com/anomalyco/mdfu/internal/model"
 )
 
 func mustParseFile(t *testing.T, path string) *model.Document {
@@ -102,7 +102,7 @@ func TestParseFixtures(t *testing.T) {
 		},
 		{
 			file:      "../../testdata/portent-task.md",
-			title:     "Ship mdfind MVP", // fm title wins over body H1
+			title:     "Ship mdfu MVP", // fm title wins over body H1
 			docType:   "Task",
 			tags:      []string{"tolaria", "launch", "Project Atlas"},
 			createdAt: "2026-01-01T00:00:00Z", // YYYY-MM layout
@@ -110,7 +110,7 @@ func TestParseFixtures(t *testing.T) {
 			status:    "draft",
 			format:    model.FormatPortent,
 			blobContain: []string{
-				"Ship mdfind MVP",
+				"Ship mdfu MVP",
 				"Project Atlas",
 				"Launch Plan",
 			},

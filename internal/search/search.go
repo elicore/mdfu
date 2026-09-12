@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anomalyco/mdfind/internal/model"
-	"github.com/anomalyco/mdfind/internal/query"
+	"github.com/anomalyco/mdfu/internal/model"
+	"github.com/anomalyco/mdfu/internal/query"
 	"github.com/sahilm/fuzzy"
 )
 

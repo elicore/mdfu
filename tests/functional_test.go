@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anomalyco/mdfind/internal/model"
-	"github.com/anomalyco/mdfind/internal/output"
-	"github.com/anomalyco/mdfind/internal/parse"
-	"github.com/anomalyco/mdfind/internal/query"
-	"github.com/anomalyco/mdfind/internal/scan"
-	"github.com/anomalyco/mdfind/internal/search"
+	"github.com/anomalyco/mdfu/internal/model"
+	"github.com/anomalyco/mdfu/internal/output"
+	"github.com/anomalyco/mdfu/internal/parse"
+	"github.com/anomalyco/mdfu/internal/query"
+	"github.com/anomalyco/mdfu/internal/scan"
+	"github.com/anomalyco/mdfu/internal/search"
 )
 
 // buildVault creates a synthetic vault in t.TempDir from rel-path -> content
@@ -156,7 +156,7 @@ func TestFunctionalTagFilterNegationComma(t *testing.T) {
 func TestFunctionalTypeFilter(t *testing.T) {
 	root := buildVault(t, map[string]string{
 		"metric.md": "---\ntype: Metric\ntitle: Monthly Active Users\n---\n\n# Monthly Active Users\n\nmau body\n",
-		"task.md":   "---\ntype: Task\ntitle: Ship mdfind MVP\n---\n\n# Ship mdfind MVP\n\ntask body\n",
+		"task.md":   "---\ntype: Task\ntitle: Ship mdfu MVP\n---\n\n# Ship mdfu MVP\n\ntask body\n",
 		"note.md":   "---\ntype: Note\ntitle: Random\n---\n\n# Random\n\nnote body\n",
 	})
 	docs := loadDocs(t, root, false)
@@ -175,19 +175,19 @@ func TestFunctionalTypeFilter(t *testing.T) {
 // 5. title: fuzzy.
 func TestFunctionalTitleFuzzy(t *testing.T) {
 	root := buildVault(t, map[string]string{
-		"a.md": "---\ntitle: Ship mdfind MVP\n---\n\n# Ship mdfind MVP\n\nbody one\n",
+		"a.md": "---\ntitle: Ship mdfu MVP\n---\n\n# Ship mdfu MVP\n\nbody one\n",
 		"b.md": "---\ntitle: Unrelated gardening notes\n---\n\n# Unrelated gardening notes\n\nbody two\n",
 	})
 	docs := loadDocs(t, root, false)
 
-	got := searchVault(t, docs, "title:mdfind")
+	got := searchVault(t, docs, "title:mdfu")
 	if len(got) != 1 || filepath.Base(got[0].Path) != "a.md" {
-		t.Fatalf("title:mdfind = %v, want [a.md]", baseList(got))
+		t.Fatalf("title:mdfu = %v, want [a.md]", baseList(got))
 	}
 	// Fuzzy deletion still matches (cf. query/search title fuzzy semantics).
-	got = searchVault(t, docs, "title:mdfnd")
+	got = searchVault(t, docs, "title:mdu")
 	if len(got) != 1 || filepath.Base(got[0].Path) != "a.md" {
-		t.Fatalf("title:mdfnd (fuzzy) = %v, want [a.md]", baseList(got))
+		t.Fatalf("title:mdu (fuzzy) = %v, want [a.md]", baseList(got))
 	}
 	if containsBase(searchVault(t, docs, "title:xyz"), "a.md") {
 		t.Fatal("title:xyz should not match a.md")

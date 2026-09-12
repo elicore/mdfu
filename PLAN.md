@@ -1,7 +1,7 @@
-# mdfind — Fuzzy Finder for Markdown (OKF + Portent)
+# mdfu — Fuzzy Finder for Markdown (OKF + Portent)
 
 ## Goal
-Single static Go binary `mdfind` for fuzzy-finding markdown files by body free text,
+Single static Go binary `mdfu` for fuzzy-finding markdown files by body free text,
 frontmatter values as free text, and attribute-specific qualifiers. Supports OKF v0.1/v0.2
 and Portent/Tolaria frontmatter via a unified normalized model.
 
@@ -53,7 +53,7 @@ Normalization rules:
 
 ## Architecture
 ```
-cmd/mdfind/main.go
+cmd/mdfu/main.go
 internal/scan/    WalkDir, gitignore, parallel load
 internal/parse/   frontmatter split + YAML + normalizers → Document
 internal/model/   Document struct + SearchBlob + FormatKind (CONTRACT, edit only by agreement)

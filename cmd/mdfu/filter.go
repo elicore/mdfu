@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anomalyco/mdfind/internal/output"
+	"github.com/anomalyco/mdfu/internal/output"
 )
 
 // runFilter executes --filter mode: it runs the shared
@@ -14,7 +14,7 @@ import (
 func runFilter(root string, includeHidden bool, respectGitignore bool, queryStr string, includeArchived bool, limit int, format string) int {
 	results, err := runQueryWithOptions(root, includeHidden, respectGitignore, queryStr, includeArchived, limit)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "mdfind:", err)
+		fmt.Fprintln(os.Stderr, "mdfu:", err)
 		return 1
 	}
 	if len(results) == 0 {

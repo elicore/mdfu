@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anomalyco/mdfind/internal/parse"
-	"github.com/anomalyco/mdfind/internal/query"
-	"github.com/anomalyco/mdfind/internal/scan"
-	"github.com/anomalyco/mdfind/internal/search"
+	"github.com/anomalyco/mdfu/internal/parse"
+	"github.com/anomalyco/mdfu/internal/query"
+	"github.com/anomalyco/mdfu/internal/scan"
+	"github.com/anomalyco/mdfu/internal/search"
 )
 
 // 12. Bad-YAML file still searchable by body.
@@ -139,7 +139,7 @@ func TestRegressionPortentTagsSplit(t *testing.T) {
 // 17. [[wikilink]] in belongs_to / related_to searchable.
 func TestRegressionWikilinkRelations(t *testing.T) {
 	root := buildVault(t, map[string]string{
-		"task.md":  "---\ntype: Task\ntitle: Ship mdfind MVP\nbelongs_to: \"[[Project Atlas]]\"\nrelated_to:\n  - \"[[Launch Plan]]\"\n  - Retro Notes\n---\n\n# Ship mdfind MVP\n\nbody\n",
+		"task.md":  "---\ntype: Task\ntitle: Ship mdfu MVP\nbelongs_to: \"[[Project Atlas]]\"\nrelated_to:\n  - \"[[Launch Plan]]\"\n  - Retro Notes\n---\n\n# Ship mdfu MVP\n\nbody\n",
 		"other.md": "# Other\n\nunrelated gardening body\n",
 	})
 	docs := loadDocs(t, root, false)

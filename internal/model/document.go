@@ -1,5 +1,5 @@
 // Package model defines the unified normalized Document contract shared by
-// all tracks of mdfind. It covers OKF v0.1/v0.2 and Portent/Tolaria
+// all tracks of mdfu. It covers OKF v0.1/v0.2 and Portent/Tolaria
 // frontmatter via a single normalized struct (see PLAN.md).
 package model
 

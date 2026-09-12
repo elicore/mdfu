@@ -1,4 +1,4 @@
-module github.com/anomalyco/mdfind
+module github.com/anomalyco/mdfu
 
 go 1.25
 

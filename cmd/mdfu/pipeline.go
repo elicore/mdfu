@@ -3,13 +3,13 @@ package main
 import (
 	"strings"
 
-	"github.com/anomalyco/mdfind/internal/model"
-	"github.com/anomalyco/mdfind/internal/output"
-	"github.com/anomalyco/mdfind/internal/parse"
-	"github.com/anomalyco/mdfind/internal/query"
-	"github.com/anomalyco/mdfind/internal/scan"
-	"github.com/anomalyco/mdfind/internal/search"
-	"github.com/anomalyco/mdfind/internal/tui"
+	"github.com/anomalyco/mdfu/internal/model"
+	"github.com/anomalyco/mdfu/internal/output"
+	"github.com/anomalyco/mdfu/internal/parse"
+	"github.com/anomalyco/mdfu/internal/query"
+	"github.com/anomalyco/mdfu/internal/scan"
+	"github.com/anomalyco/mdfu/internal/search"
+	"github.com/anomalyco/mdfu/internal/tui"
 )
 
 // loadDocuments walks root for markdown files and parses each one.
