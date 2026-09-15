@@ -1,0 +1,40 @@
+name: Module Guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  single-module:
+    name: Single Go module
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Assert no submodules, no workspace, exactly one go.mod outside website/
+        run: |
+          set -euo pipefail
+          if [ -e .gitmodules ]; then
+            echo "::error::.gitmodules found — submodules are not allowed (single-module repo)"
+            exit 1
+          fi
+          if [ -e go.work ] || [ -e go.work.sum ]; then
+            echo "::error::go.work/go.work.sum found — workspaces are not allowed (single-module repo)"
+            exit 1
+          fi
+          mods=$(find . -path ./.git -prune -o -path ./website -prune -o -name 'go.mod' -print | sort)
+          count=$(printf '%s\n' "$mods" | grep -c . || true)
+          echo "go.mod files outside website/:"
+          echo "$mods"
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly one go.mod outside website/, found $count"
+            exit 1
+          fi
+          if [ ! -f go.mod ]; then
+            echo "::error::the single go.mod must be at the repo root (./go.mod)"
+            exit 1
+          fi
+          echo "Single-module layout OK"

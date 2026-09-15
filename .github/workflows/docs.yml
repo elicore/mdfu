@@ -1,0 +1,117 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "README.md"
+  pull_request:
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "README.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # Astro Starlight fails the build on broken sidebar slugs and
+      # invalid internal Markdown links; warnings below are treated as signal.
+      - name: Build (Starlight)
+        run: npm run build
+      # Offline internal link check over built HTML — stdlib python3 only,
+      # no new binary deps. Respects base /mdfu/ (see website/astro.config.mjs).
+      - name: Internal link check (website/dist)
+        run: |
+          python3 - <<'EOF'
+          import os
+          import re
+          import sys
+          from html.parser import HTMLParser
+          from urllib.parse import urlparse, unquote
+
+          DIST = "dist"
+          BASE = "/mdfu/"
+
+          class LinkParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.links = []
+              def handle_starttag(self, tag, attrs):
+                  if tag not in ("a", "link"):
+                      return
+                  for k, v in attrs:
+                      if k in ("href",) and v:
+                          self.links.append(v)
+
+          broken = []
+          checked = 0
+          for root, _, files in os.walk(DIST):
+              for f in files:
+                  if not f.endswith(".html"):
+                      continue
+                  page = os.path.join(root, f)
+                  with open(page, encoding="utf-8", errors="strict") as fh:
+                      html = fh.read()
+                  p = LinkParser()
+                  p.feed(html)
+                  page_dir = os.path.relpath(root, DIST)
+                  if page_dir == ".":
+                      page_dir = ""
+                  for raw in p.links:
+                      if not raw or raw.startswith(("#", "mailto:", "tel:", "data:", "blob:", "javascript:")):
+                          continue
+                      parsed = urlparse(raw)
+                      if parsed.scheme in ("http", "https") or raw.startswith("//"):
+                          continue  # external: out of scope for this check
+                      path = unquote(parsed.path)
+                      if not path:
+                          continue  # fragment-only link
+                      if path.startswith(BASE):
+                          rel = path[len(BASE):]
+                      elif path.startswith("/"):
+                          # Absolute link escaping the /mdfu/ base: flag it.
+                          broken.append(f"{page}: {raw} (outside base {BASE})")
+                          continue
+                      else:
+                          # Relative link: resolve against current page dir.
+                          rel = os.path.normpath(os.path.join(page_dir, path))
+                      # Astro trailingSlash: always -> dirs map to index.html
+                      candidates = []
+                      if rel in ("", "/"):
+                          candidates = ["index.html"]
+                      elif rel.endswith("/"):
+                          candidates = [rel + "index.html"]
+                      elif os.path.splitext(rel)[1]:
+                          candidates = [rel]
+                      else:
+                          candidates = [rel + "/index.html", rel + ".html"]
+                      checked += 1
+                      if not any(os.path.isfile(os.path.join(DIST, c)) for c in candidates):
+                          broken.append(f"{page}: {raw} (tried {candidates})")
+
+          print(f"checked {checked} internal link(s)")
+          if broken:
+              print(f"{len(broken)} broken internal link(s):")
+              for b in broken:
+                  print(f"  BROKEN {b}")
+              sys.exit(1)
+          print("no broken internal links")
+          EOF
