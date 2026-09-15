@@ -1,0 +1,81 @@
+---
+title: mdfu
+description: Fast markdown finder CLI — search, rank, and browse Markdown notes.
+template: splash
+hero:
+  tagline: Search, rank, and browse your Markdown notes from the terminal.
+  actions:
+    - text: Read the Guide
+      link: /mdfu/guide/query-syntax/
+      icon: right-arrow
+    - text: CLI Reference
+      link: /mdfu/reference/cli/
+      icon: open-book
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What is mdfu?
+
+**mdfu** is a fast, single static Go binary for fuzzy-finding Markdown notes — by body free text, frontmatter values as free text, and attribute qualifiers. It understands OKF v0.1/v0.2 and Portent/Tolaria frontmatter through one unified normalized model.
+
+**Why mdfu?**
+
+- One box: bare words fuzzy-match, `key:value` hard-filters, AND-combined.
+- Two modes: interactive TUI picker by default, pipeable `--filter` mode (fzf-compatible).
+- No daemon, no persistent index, no `cgo` by default.
+
+```
+scan → parse → query → search → output/tui
+```
+
+## Quickstart
+
+Requires Go 1.25+.
+
+```sh
+go install github.com/elicore/mdfu/cmd/mdfu@latest
+# or
+git clone https://github.com/elicore/mdfu && cd mdfu && go build -o mdfu ./cmd/mdfu
+```
+
+Run against the bundled fixtures (or your own notes root):
+
+```sh
+./mdfu --root testdata
+./mdfu --root testdata --filter "type:Task"
+./mdfu --root testdata --filter "tag:launch kumquat"
+./mdfu --root testdata --filter "status:Draft"
+```
+
+Three filter examples to try first:
+
+```sh
+mdfu --root testdata --filter "type:Task"       # → portent-task.md
+mdfu --root testdata --filter "tag:launch"      # → portent-task.md
+mdfu --root testdata --filter "author:bob"      # → generic.md (custom frontmatter)
+```
+
+## Explore
+
+<CardGrid stagger>
+  <Card title="Query Syntax" icon="pencil">
+    Single-box language: bare words, `key:value` filters, dates. Start with [Query Syntax](/guide/query-syntax/).
+  </Card>
+  <Card title="Frontmatter Model" icon="document">
+    The unified `Document` contract and normalization rules. See [Frontmatter Model](/guide/frontmatter-model/).
+  </Card>
+  <Card title="Search & Ranking" icon="star">
+    How hard-filter + fuzzy scoring + title boost work. See [Search & Ranking](/guide/search-ranking/).
+  </Card>
+  <Card title="CLI Reference" icon="laptop">
+    Flags, formats, exit codes, examples. See [CLI](/reference/cli/).
+  </Card>
+  <Card title="Architecture" icon="setting">
+    Pipeline, packages, budgets. See [Architecture](/reference/architecture/).
+  </Card>
+  <Card title="Roadmap" icon="rocket">
+    Active perf tasks T1–T8. See [Roadmap](/project/roadmap/).
+  </Card>
+</CardGrid>

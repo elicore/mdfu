@@ -1,91 +1,44 @@
-# mdfu — Fuzzy Finder for Markdown (OKF + Portent)
+# mdfu — plan (active)
 
 ## Goal
-Single static Go binary `mdfu` for fuzzy-finding markdown files by body free text,
-frontmatter values as free text, and attribute-specific qualifiers. Supports OKF v0.1/v0.2
-and Portent/Tolaria frontmatter via a unified normalized model.
 
-## UX decisions (locked)
-- Both interactive TUI (default) + ` --filter` non-interactive mode (fzf-compatible).
-- Single-box qualifier syntax: bare words fuzzy-match; `key:value` tokens hard-filter.
-- Unified normalized model (not strict per-format keys).
-- No persistent index: walk + parse on each run (target 5–10k files, scan <500ms, <50ms/keystroke).
+Single static Go binary `mdfu` for fuzzy-finding markdown by body free text, frontmatter values as free text, and attribute qualifiers. OKF v0.1/v0.2 + Portent/Tolaria via a unified normalized model.
 
-## Query language
-- Bare words: AND, fuzzy against SearchBlob (title+tags+flattened frontmatter+body).
-- `tag:foo`, `tags:a,b` (negate with `-`/`!` prefix). Case-insensitive.
-- `type:Note` (normalized exact), `title:text` (fuzzy), `path:sub/`.
-- Lifecycle: `status:draft`, `organized:true`, `archived:false`. `archived:true` hidden by default in TUI, still searchable.
-- Dates: `created:`, `updated:`, `date:` (either), `before:`, `after:` with values `YYYY-MM-DD`, RFC3339, `YYYY-MM`, ranges `A..B`, comparisons `>=D`, `>D`, `<=D`, `<D`.
-- Generic: any other `key:value` looks up Raw frontmatter (case-insensitive) + normalized fields, fuzzy on value.
-- `|` for OR within a token group (v2 if costly); `!`/`-` negation required in v1.
+Details moved out of this file into the docs site (`website/src/content/docs/`,
+live at <https://elicore.github.io/mdfu/>):
 
-## Shared contract (all tracks MUST respect — lives in internal/model)
-```go
-type FormatKind string // FormatOKF, FormatPortent, FormatGeneric, FormatNone
-type Attestation struct { By string; At *time.Time }
-type Source struct { ID, Resource, Title, Author string }
-type Document struct {
-  Path, Title, DocType, Description, Resource, Role string // Role: ""|index|log
-  Tags []string
-  Body string
-  CreatedAt, UpdatedAt *time.Time
-  Status string
-  Organized, Archived *bool
-  BelongsTo, RelatedTo []string
-  Sources []Source
-  Generated, Verified *Attestation
-  Format FormatKind
-  Raw map[string]any
-  SearchBlob string
-  ParseError error
-}
-```
+- `guide/` — query syntax, frontmatter model, search & ranking, scan, TUI
+- `reference/` — architecture, CLI, backend evaluation (bleve vs bluge vs SQLite)
+- `project/` — roadmap (this file's tasks) and history (completed Tracks A–H, M1–M4)
 
-Normalization rules:
-- title ← `title` else `# H1` else filename. type ← `type` (any case).
-- tags: list | single string | comma string; strip `[[ ]]`.
-- CreatedAt ← first of `created,date,timestamp,generated.at`; UpdatedAt ← first of `generated.at,timestamp,last_modified,updated,modified`. Parse RFC3339, `2006-01-02`, `2006-01`, `2006-01-02T15:04:05Z07:00`.
-- status: lowercase `status`; plus `organized`/`archived` bools. archived:true → hidden by default.
-- belongs_to (string|list), related_to (list|string); resource; sources[].{id,resource,title,author}.
-- index.md/log.md → Role set, deprioritized in ranking, never dropped.
-- SearchBlob = title + description + tags + flattened scalars of Raw + body (lowercased at match time, not stored lowercased).
+## Constraints (locked)
 
-## Architecture
-```
-cmd/mdfu/main.go
-internal/scan/    WalkDir, gitignore, parallel load
-internal/parse/   frontmatter split + YAML + normalizers → Document
-internal/model/   Document struct + SearchBlob + FormatKind (CONTRACT, edit only by agreement)
-internal/query/   tokenizer + Query AST + date-range parser
-internal/search/  hard-filter + fuzzy score + rank
-internal/tui/     BubbleTea app
-internal/output/  paths/json/vimgrep formatters
-testdata/{okf,portent,generic,edge}/
-```
+- Interactive TUI (default) + `--filter` non-interactive (fzf-compatible).
+- Single-box syntax: bare words fuzzy-match; `key:value` hard-filter; AND-combined.
+- Unified normalized model, not strict per-format keys.
+- No persistent index, no daemon, no `cgo` by default.
+- Budgets: 5–10k files, cold `scan+parse` <500ms, per-keystroke `query+rank` <50ms.
 
-Deps: `gopkg.in/yaml.v3`, `charmbracelet/bubbletea+bubbles+lipgloss`, `sahilm/fuzzy`, stdlib rest. No tcell-based fuzzyfinder lib.
+## Roadmap
 
-## Track split (each = one worktree + one subagent)
-- Track A (scaffold+scan): DONE (`d2c7a30`, merged). `cmd` skeleton + `internal/scan` walker.
-- Track B (parse+model): DONE (`df06910`, merged). Canonical `internal/model` + `internal/parse` + fixtures.
-- Track C (query+search): DONE (`6bace15`, merged). `internal/query` + `internal/search`.
-- Track D (cli-output): DONE as stub (`282802d`, merged). `internal/output` formatters real; `runFilterStub` still placeholder — to be replaced by Track F.
-- Track E (tui): DONE as standalone (`63afefa`, merged). `internal/tui` BubbleTea picker; live `FilterFunc` wiring pending in Track F.
-- Track F (wire-up): DONE. Real scan→parse→query→rank→output pipeline + live TUI FilterFunc; `--archived` flag. Branch `feat/wire`.
-- Track G (tests): DONE. `tests/functional_test.go` (11 tests) + `tests/regression_test.go` (10 tests). Branch `feat/tests`.
-- Track H (docs): DONE. README + examples + headless TUI screenshot. Branch `feat/docs`.
+### Now (P0 — indexless perf, must hold budgets)
 
-## Status (post-integration)
-- M1: DONE — build green; scan + parse fixtures verified.
-- M2: DONE — query table tests + rank title-boost verified.
-- M3: DONE — `--filter "type:Task"` etc. print real ranked paths; `--format json|vimgrep` valid; exit 0/1/2 verified live.
-- M4: DONE (wired; perf benchmark pending) — TUI opens with live filtering, Enter prints selection.
+- [ ] **T1: Benchmark + profile current path.** 5k synthetic-file corpus; measure cold `scan+parse` and per-keystroke `query+rank`; CPU profile `search.scoreDoc` (`fuzzy.Find` per doc per word vs whole `SearchBlob`). Acceptance: numbers + p50/p95 in PR; bottleneck confirmed or refuted.
+- [ ] **T2: Indexless rank optimization.** Cache lowered `SearchBlob`/tokens at parse time; avoid per-doc filter-map rebuilds; early-exit bare-word AND; reuse query parse per keystroke. Acceptance: T1 corpus meets <50ms/keystroke with no behavior change (`go test ./...` green).
+- [ ] **T3: Facet pre-index (roaring bitmaps).** Pre-build `value → bitmap` for `tag/type/status` + hot custom keys; `MatchesDoc` becomes bitmap `And/AndNot` before fuzzy scoring. Acceptance: filter-only queries scale with result size, not corpus size; generic `key:value` still falls back to `lookupField`.
 
-Integration order: A+B → C → D+E → main. Each track must `go build ./... && go test ./...` green in its worktree before merge.
+### Next (P1 — only pay if T1/T2 miss)
 
-## Milestones / acceptance
-- M1: `go build` ok; scan finds *.md respecting gitignore; parse fixtures produce expected normalized docs.
-- M2: query table tests pass (tags/type/date/negation/generic); rank smoke test title-boost.
-- M3: `--filter "tag:x"` prints ranked paths; `--format json` valid.
-- M4: TUI opens, live filters <50ms on 5k synthetic files, Enter prints selection.
+- [ ] **T4: Fuzzy-core bake-off.** Compare `sahilm/fuzzy` (current) vs `lithammer/fuzzysearch` vs `sajari/fuzzy` (SymDelete) on recall + latency over real titles/bodies. Acceptance: matrix + keep/swap decision; no swap without TUI blind-test win.
+- [ ] **T5: Persistent-index spike (gated).** Prototype behind a flag: (a) `bleve` `NewMemOnly` dynamic mapping, (b) `bluge`, (c) SQLite FTS5 (`modernc` vs `cgo`). Compare binary size, cold-start, query latency, fuzzy+facet parity per the backend-evaluation page. Acceptance: decision record + throwaway branches only; no new default dep.
+- [ ] **T6: Scan hardening.** Implement `RespectGitignore` (currently ignored, `internal/scan/scan.go:31`) + parallel file load. Acceptance: gitignored files excluded unless `--no-ignore`; 5k cold scan still <500ms.
+
+### Later (v2 — language + display)
+
+- [ ] **T7: Query v2.** `|` alternation within a token group, negation beyond tags, per-field boosting. Acceptance: query-syntax docs page updated + table tests.
+- [ ] **T8: Facet counts + highlighting.** Expose facet counts to TUI/`--format json` and match-fragment snippets. Acceptance: works indexless; aligns with T5 API if an index lands.
+
+## Working agreements
+
+- `internal/model` is the shared contract — changes need cross-package sign-off.
+- Each task: `go build ./... && go test ./...` green before merge.
