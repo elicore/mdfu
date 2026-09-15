@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anomalyco/mdfu/internal/model"
-	"github.com/anomalyco/mdfu/internal/query"
+	"github.com/elicore/mdfu/internal/model"
+	"github.com/elicore/mdfu/internal/query"
 )
 
 func timePtr(s string) *time.Time {

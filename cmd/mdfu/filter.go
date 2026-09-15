@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anomalyco/mdfu/internal/output"
+	"github.com/elicore/mdfu/internal/output"
 )
 
 // runFilter executes --filter mode: it runs the shared

@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/anomalyco/mdfu/internal/model"
+	"github.com/elicore/mdfu/internal/model"
 )
 
 func boolPtr(b bool) *bool { return &b }

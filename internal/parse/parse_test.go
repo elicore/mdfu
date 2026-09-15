@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anomalyco/mdfu/internal/model"
+	"github.com/elicore/mdfu/internal/model"
 )
 
 func mustParseFile(t *testing.T, path string) *model.Document {

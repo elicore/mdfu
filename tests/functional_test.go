@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anomalyco/mdfu/internal/model"
-	"github.com/anomalyco/mdfu/internal/output"
-	"github.com/anomalyco/mdfu/internal/parse"
-	"github.com/anomalyco/mdfu/internal/query"
-	"github.com/anomalyco/mdfu/internal/scan"
-	"github.com/anomalyco/mdfu/internal/search"
+	"github.com/elicore/mdfu/internal/model"
+	"github.com/elicore/mdfu/internal/output"
+	"github.com/elicore/mdfu/internal/parse"
+	"github.com/elicore/mdfu/internal/query"
+	"github.com/elicore/mdfu/internal/scan"
+	"github.com/elicore/mdfu/internal/search"
 )
 
 // buildVault creates a synthetic vault in t.TempDir from rel-path -> content

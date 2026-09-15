@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anomalyco/mdfu/internal/search"
-	"github.com/anomalyco/mdfu/internal/tui"
+	"github.com/elicore/mdfu/internal/search"
+	"github.com/elicore/mdfu/internal/tui"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".

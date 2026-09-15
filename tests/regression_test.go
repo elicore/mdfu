@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anomalyco/mdfu/internal/parse"
-	"github.com/anomalyco/mdfu/internal/query"
-	"github.com/anomalyco/mdfu/internal/scan"
-	"github.com/anomalyco/mdfu/internal/search"
+	"github.com/elicore/mdfu/internal/parse"
+	"github.com/elicore/mdfu/internal/query"
+	"github.com/elicore/mdfu/internal/scan"
+	"github.com/elicore/mdfu/internal/search"
 )
 
 // 12. Bad-YAML file still searchable by body.

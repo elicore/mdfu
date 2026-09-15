@@ -1,4 +1,4 @@
-module github.com/anomalyco/mdfu
+module github.com/elicore/mdfu
 
 go 1.25
 
