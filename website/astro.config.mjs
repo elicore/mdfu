@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { unified } from '@astrojs/markdown-remark';
 
 // GitHub Pages project site: https://elicore.github.io/mdfu
 const base = '/mdfu/';
@@ -33,7 +34,11 @@ export default defineConfig({
   base,
   trailingSlash: 'always',
   markdown: {
-    rehypePlugins: [rehypePrefixBaseLinks],
+    // Astro 7's default Sätteri processor has no rehype API, so opt back into
+    // the unified/remark pipeline to keep the custom rehype plugin.
+    processor: unified({
+      rehypePlugins: [rehypePrefixBaseLinks],
+    }),
   },
   integrations: [
     starlight({
