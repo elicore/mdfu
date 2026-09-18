@@ -7,15 +7,22 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/elicore/mdfu/internal/model"
 )
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
+// osc8Re matches OSC 8 hyperlink open/close sequences.
+var osc8Re = regexp.MustCompile(`\x1b]8;;[^\x07]*\x07`)
+
 // stripANSI removes SGR sequences so tests can assert on the visible text of
 // glamour-highlighted previews.
 func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
+
+// stripOSC8 removes terminal hyperlink sequences.
+func stripOSC8(s string) string { return osc8Re.ReplaceAllString(s, "") }
 
 func boolPtr(b bool) *bool { return &b }
 
@@ -335,6 +342,133 @@ func TestPreviewHighlightsQueryMatch(t *testing.T) {
 	}
 }
 
+func TestPreviewHidesLinkURLBehindOSC8(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Note",
+		Body:  "See [Charm](https://charm.sh) for more.\n",
+	}
+	out := previewTextHighlighted(doc, 80, nil, true)
+	if !strings.Contains(out, ansi.SetHyperlink("https://charm.sh")) {
+		t.Fatalf("expected OSC 8 hyperlink, got:\n%q", out)
+	}
+	if !strings.Contains(out, ansi.ResetHyperlink()) {
+		t.Fatalf("expected OSC 8 hyperlink to close, got:\n%q", out)
+	}
+	visible := stripANSI(stripOSC8(out))
+	if !strings.Contains(visible, "Charm") {
+		t.Fatalf("expected link label visible, got:\n%q", visible)
+	}
+	if strings.Contains(visible, "https://charm.sh") {
+		t.Fatalf("expected raw URL hidden, got:\n%q", visible)
+	}
+}
+
+func TestPreviewShowsLinkURLWithoutHyperlinks(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Note",
+		Body:  "See [Charm](https://charm.sh) for more.\n",
+	}
+	out := previewTextHighlighted(doc, 80, nil, false)
+	if strings.Contains(out, "\x1b]8;;") {
+		t.Fatalf("expected no OSC 8 hyperlink, got:\n%q", out)
+	}
+	visible := stripANSI(stripOSC8(out))
+	if !strings.Contains(visible, "Charm") || !strings.Contains(visible, "https://charm.sh") {
+		t.Fatalf("expected label and URL visible, got:\n%q", visible)
+	}
+}
+
+func TestPreviewRelativeLinkIsPlainLabel(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Note",
+		Body:  "See [other](notes/other.md) for more.\n",
+	}
+	out := previewTextHighlighted(doc, 80, nil, true)
+	if strings.Contains(out, "\x1b]8;;") {
+		t.Fatalf("relative link should not be clickable, got:\n%q", out)
+	}
+	visible := stripANSI(stripOSC8(out))
+	if !strings.Contains(visible, "other") || strings.Contains(visible, "notes/other.md") {
+		t.Fatalf("expected only the label, got:\n%q", visible)
+	}
+}
+
+func TestPreviewLeavesCodeUntouched(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Note",
+		Body:  "Inline `[x](https://inline.example)`.\n\n```\n[y](https://fenced.example)\n```\n",
+	}
+	out := previewTextHighlighted(doc, 80, nil, true)
+	if strings.Contains(out, "\x1b]8;;") {
+		t.Fatalf("code links must stay literal, got:\n%q", out)
+	}
+	visible := stripANSI(stripOSC8(out))
+	if !strings.Contains(visible, "https://inline.example") || !strings.Contains(visible, "https://fenced.example") {
+		t.Fatalf("expected code content preserved, got:\n%q", visible)
+	}
+}
+
+func TestPreviewResourceIsClickable(t *testing.T) {
+	doc := &model.Document{
+		Path:     "notes/a.md",
+		Title:    "Note",
+		Resource: "https://example.com/r",
+		Body:     "Body without links.\n",
+	}
+	out := previewTextHighlighted(doc, 80, nil, true)
+	if !strings.Contains(out, ansi.SetHyperlink("https://example.com/r")) {
+		t.Fatalf("expected Resource hyperlink, got:\n%q", out)
+	}
+	visible := stripANSI(stripOSC8(out))
+	if !strings.Contains(visible, "Resource: https://example.com/r") {
+		t.Fatalf("expected Resource row, got:\n%q", visible)
+	}
+}
+
+func TestPreviewHighlightsLinkLabelWithoutBreakingHyperlink(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Note",
+		Body:  "See [Charm parser](https://charm.sh).\n",
+	}
+	out := previewTextHighlighted(doc, 80, termsRegexp([]string{"parser"}), true)
+	if !strings.Contains(out, ansi.SetHyperlink("https://charm.sh")) {
+		t.Fatalf("expected OSC 8 hyperlink, got:\n%q", out)
+	}
+	if !strings.Contains(out, hlStart) {
+		t.Fatalf("expected match highlight, got:\n%q", out)
+	}
+	if !strings.Contains(out, hlReset) {
+		t.Fatalf("expected highlight to reset, got:\n%q", out)
+	}
+	visible := stripANSI(stripOSC8(out))
+	if !strings.Contains(visible, "Charm parser") || strings.Contains(visible, "https://charm.sh") {
+		t.Fatalf("expected highlighted label and hidden URL, got:\n%q", visible)
+	}
+}
+
+func TestDocFirstLink(t *testing.T) {
+	if got := docFirstLink(nil); got != "" {
+		t.Fatalf("nil doc: got %q", got)
+	}
+	withResource := &model.Document{Resource: "https://res.example", Body: "[b](https://body.example)"}
+	if got := docFirstLink(withResource); got != "https://res.example" {
+		t.Fatalf("resource: got %q", got)
+	}
+	bodyOnly := &model.Document{Body: "text [b](https://body.example) more"}
+	if got := docFirstLink(bodyOnly); got != "https://body.example" {
+		t.Fatalf("body: got %q", got)
+	}
+	none := &model.Document{Resource: "notes/x.md", Body: "no links"}
+	if got := docFirstLink(none); got != "" {
+		t.Fatalf("no link: got %q", got)
+	}
+}
+
 func TestCheckboxesOnlyWhenMultiSelecting(t *testing.T) {
 	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
 	m := NewModelWithFilter(items, Config{}, substringStub)
@@ -350,6 +484,20 @@ func TestCheckboxesOnlyWhenMultiSelecting(t *testing.T) {
 	m = applyKey(m, key(tea.KeyTab))
 	if v := stripANSI(m.View()); strings.Contains(v, "[ ]") || strings.Contains(v, "[x]") {
 		t.Fatalf("expected checkboxes hidden after deselect, got:\n%s", v)
+	}
+}
+
+func TestViewKeepsHyperlink(t *testing.T) {
+	doc := &model.Document{Path: "a.md", Title: "Note", Body: "See [Charm](https://charm.sh).\n"}
+	m := NewModelWithFilter([]Item{{Doc: doc}}, Config{Preview: true}, substringStub)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = next.(Model)
+	v := m.View()
+	if !strings.Contains(v, ansi.SetHyperlink("https://charm.sh")) {
+		t.Fatalf("expected hyperlink in rendered view, got:\n%q", v)
+	}
+	if strings.Contains(stripANSI(stripOSC8(v)), "https://charm.sh") {
+		t.Fatalf("expected URL hidden in rendered view, got:\n%q", v)
 	}
 }
 

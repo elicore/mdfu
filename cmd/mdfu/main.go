@@ -20,6 +20,7 @@ func main() {
 	filter := flag.String("filter", "", "non-interactive filter query")
 	format := flag.String("format", "paths", "output format: paths|json|vimgrep")
 	archived := flag.Bool("archived", false, "include archived documents")
+	noHyperlinks := flag.Bool("no-hyperlinks", false, "render markdown links as label and URL instead of OSC 8 terminal hyperlinks")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -36,13 +37,13 @@ func main() {
 	if *filter != "" {
 		os.Exit(runFilter(*root, *hidden, !*noIgnore, *filter, *archived, *limit, *format))
 	}
-	os.Exit(runTUI(*root, *hidden, !*noIgnore, *archived, *limit))
+	os.Exit(runTUI(*root, *hidden, !*noIgnore, *archived, *limit, *noHyperlinks))
 }
 
 // runTUI loads all documents the same way as --filter mode, then launches
 // the interactive picker with a live re-parse/re-rank FilterFunc. Selected
 // paths are printed one per line on success.
-func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchived bool, limit int) int {
+func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchived bool, limit int, noHyperlinks bool) int {
 	docs, err := loadDocuments(root, includeHidden, respectGitignore)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mdfu:", err)
@@ -60,6 +61,7 @@ func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchi
 		Limit:        limit,
 		ShowArchived: includeArchived,
 		Preview:      true,
+		NoHyperlinks: noHyperlinks,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mdfu:", err)
