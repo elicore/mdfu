@@ -70,4 +70,6 @@ changelog:
 
 release:
   draft: false
+  use_existing_draft: true
+  mode: keep-existing
   prerelease: auto
