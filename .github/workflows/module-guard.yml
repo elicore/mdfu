@@ -13,7 +13,7 @@ jobs:
     name: Single Go module
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Assert no submodules, no workspace, exactly one go.mod outside website/
         run: |
           set -euo pipefail
