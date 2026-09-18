@@ -320,6 +320,58 @@ func TestListHighlightsQueryMatch(t *testing.T) {
 	}
 }
 
+func TestPreviewWindowsToBodyMatch(t *testing.T) {
+	var body strings.Builder
+	for i := 1; i <= 40; i++ {
+		fmt.Fprintf(&body, "filler line %d\n", i)
+	}
+	body.WriteString("the deepterm appears here\n")
+	doc := &model.Document{Path: "notes/a.md", Title: "Unrelated", Body: body.String()}
+	out := PreviewTextHighlighted(doc, 80, []string{"deepterm"})
+	if !strings.Contains(out, hlStart) {
+		t.Fatalf("expected highlighted deep body match, got:\n%q", out)
+	}
+	plain := stripANSI(out)
+	if !strings.Contains(plain, "deepterm") {
+		t.Fatalf("expected preview to window onto the match, got:\n%s", plain)
+	}
+	if strings.Contains(plain, "filler line 1\n") {
+		t.Fatalf("expected preview to skip leading lines before the match, got:\n%s", plain)
+	}
+}
+
+func TestListShowsSnippetForBodyMatch(t *testing.T) {
+	doc := &model.Document{
+		Path:       "notes/a.md",
+		Title:      "Unrelated",
+		Body:       "line one\nline two\nthe deepterm appears here\n",
+		SearchBlob: "line one line two the deepterm appears here",
+	}
+	m := NewModel([]Item{{Doc: doc}}, Config{})
+	m.SetQuery("deepterm")
+	v := m.View()
+	if !strings.Contains(v, hlStart) {
+		t.Fatalf("expected highlighted body snippet, got:\n%q", v)
+	}
+	if !strings.Contains(v, hlStart+"deepterm") {
+		t.Fatalf("expected the matched body text to be emphasized, got:\n%q", v)
+	}
+}
+
+func TestNoBodySnippetWhenTitleMatches(t *testing.T) {
+	doc := &model.Document{
+		Path:       "notes/a.md",
+		Title:      "Deepterm Note",
+		Body:       "nothing to see here\n",
+		SearchBlob: "Deepterm Note nothing to see here",
+	}
+	m := NewModel([]Item{{Doc: doc}}, Config{})
+	m.SetQuery("deepterm")
+	if v := stripANSI(m.View()); strings.Contains(v, "nothing to see here") {
+		t.Fatalf("expected no body snippet when the title already highlights, got:\n%s", v)
+	}
+}
+
 func TestPreviewHighlightsQueryMatch(t *testing.T) {
 	doc := &model.Document{
 		Path:  "notes/a.md",

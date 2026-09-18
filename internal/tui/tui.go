@@ -390,6 +390,22 @@ func (m *Model) visibleRows() int {
 	return n
 }
 
+// rowWidth returns the horizontal budget for a result row. In the wide
+// side-by-side layout the list only owns the left half of the screen.
+func (m Model) rowWidth() int {
+	if m.width <= 0 {
+		return 100
+	}
+	if m.showPrev && m.width >= 100 {
+		w := m.width/2 - 2
+		if w < 20 {
+			w = 20
+		}
+		return w
+	}
+	return m.width
+}
+
 // previewRows returns the vertical budget for the stacked preview pane.
 func (m *Model) previewRows() int {
 	if m.height <= 0 {
@@ -531,6 +547,7 @@ func (m Model) renderList() string {
 		title := "(untitled)"
 		path := ""
 		extra := ""
+		snippet := ""
 		if it.Doc != nil {
 			if it.Doc.Title != "" {
 				title = it.Doc.Title
@@ -545,20 +562,48 @@ func (m Model) renderList() string {
 				extra += " (archived)"
 			}
 		}
+		rawTitle := title
+		showPath := path != "" && path != rawTitle
+		// When the query only matches the body, the visible fields carry no
+		// highlight; surface a highlighted excerpt of the match so the list
+		// still explains why the row ranked. Size it to the width left after
+		// the title so the matched text is never truncated away.
+		if it.Doc != nil && m.matchRe != nil &&
+			!matchesAny(m.matchRe, title, path, extra, it.Doc.Description, strings.Join(it.Doc.Tags, " ")) {
+			prefix := 2 // cursor
+			if multi {
+				prefix += 4 // separator + checkbox
+			}
+			sw := m.rowWidth() - prefix - lipgloss.Width(title) - lipgloss.Width(extra) - 4
+			if sw < 24 {
+				sw = 24
+			}
+			if sw > 80 {
+				sw = 80
+			}
+			snippet = bodySnippet(it.Doc.Body, m.matchRe, sw)
+		}
 		title = highlightRe(title, m.matchRe)
 		path = highlightRe(path, m.matchRe)
 		extra = highlightRe(extra, m.matchRe)
+		snippet = highlightRe(snippet, m.matchRe)
 		var line string
 		if multi {
 			line = fmt.Sprintf("%s%s %s%s", cursor, sel, title, extra)
 		} else {
 			line = fmt.Sprintf("%s%s%s", cursor, title, extra)
 		}
+		if snippet != "" {
+			// The snippet owns the remaining row width, so the path (which the
+			// preview still shows) yields rather than truncating the match.
+			line += "  " + snippet
+			showPath = false
+		}
 		if i == m.cursor {
 			line = styleCursor.Render(line)
 		}
 		b.WriteString(line)
-		if path != "" && path != title {
+		if showPath {
 			b.WriteString("  " + styleDim.Render(path))
 		}
 		if i < end-1 {
@@ -643,6 +688,9 @@ func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp) s
 	if doc.DocType != "" {
 		b.WriteString("Type: " + doc.DocType + "\n")
 	}
+	if doc.Description != "" {
+		b.WriteString("Description: " + doc.Description + "\n")
+	}
 	if len(doc.Tags) > 0 {
 		b.WriteString("Tags: " + strings.Join(doc.Tags, ", ") + "\n")
 	}
@@ -650,7 +698,7 @@ func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp) s
 		b.WriteString("Status: " + doc.Status + "\n")
 	}
 	b.WriteString("---\n")
-	b.WriteString(renderMarkdown(BodyExcerpt(doc.Body, 30), width))
+	b.WriteString(renderMarkdown(matchWindow(doc.Body, re, 30), width))
 	return highlightRe(b.String(), re)
 }
 
@@ -959,6 +1007,102 @@ func BodyExcerpt(body string, n int) string {
 		lines = lines[:n]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// matchWindow returns an excerpt of at most n body lines that contains the
+// first match of re, so the preview emphasizes a hit even when it lives well
+// past the leading lines. Without a match (or a nil re) it degenerates to the
+// leading excerpt. Ellipsis markers flag skipped leading/trailing lines.
+func matchWindow(body string, re *regexp.Regexp, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	lines := strings.Split(body, "\n")
+	if re == nil || len(lines) <= n {
+		return BodyExcerpt(body, n)
+	}
+	loc := re.FindStringIndex(body)
+	if loc == nil {
+		return BodyExcerpt(body, n)
+	}
+	matchLine := strings.Count(body[:loc[0]], "\n")
+	start := matchLine - 2
+	if start < 0 {
+		start = 0
+	}
+	// Cap the tail rather than sliding the window back: if the match sits near
+	// the end of the document, keeping it near the top of the excerpt is what
+	// makes it visible once the preview height is clamped.
+	end := start + n
+	if end > len(lines) {
+		end = len(lines)
+	}
+	out := strings.Join(lines[start:end], "\n")
+	if start > 0 {
+		out = "…\n" + out
+	}
+	if end < len(lines) {
+		out += "\n…"
+	}
+	return out
+}
+
+// bodySnippet returns a single-line excerpt of body centered on the first
+// match of re, trimmed with ellipsis markers, or "" when there is no match.
+// It gives the result list something concrete to highlight for body-only hits.
+func bodySnippet(body string, re *regexp.Regexp, width int) string {
+	if re == nil || width <= 0 {
+		return ""
+	}
+	s := strings.Join(strings.Fields(body), " ")
+	if s == "" {
+		return ""
+	}
+	loc := re.FindStringIndex(s)
+	if loc == nil {
+		return ""
+	}
+	r := []rune(s)
+	// Keep only a little lead-in so the match stays well inside the row even
+	// when the title eats most of the available width.
+	lead := width / 4
+	if lead > 12 {
+		lead = 12
+	}
+	start := len([]rune(s[:loc[0]])) - lead
+	if start < 0 {
+		start = 0
+	}
+	end := start + width
+	if end > len(r) {
+		end = len(r)
+		start = end - width
+		if start < 0 {
+			start = 0
+		}
+	}
+	out := string(r[start:end])
+	if start > 0 {
+		out = "…" + out
+	}
+	if end < len(r) {
+		out += "…"
+	}
+	return out
+}
+
+// matchesAny reports whether re matches any of the non-empty strings.
+func matchesAny(re *regexp.Regexp, ss ...string) bool {
+	if re == nil {
+		return false
+	}
+	for _, s := range ss {
+		if s != "" && re.MatchString(s) {
+			return true
+		}
+	}
+	return false
 }
 
 // Run launches the interactive picker and returns the selection.
