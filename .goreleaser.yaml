@@ -36,6 +36,26 @@ archives:
 checksum:
   name_template: checksums.txt
 
+homebrew_casks:
+  - name: mdfu
+    ids:
+      - mdfu
+    binaries:
+      - mdfu
+    directory: Casks
+    homepage: https://github.com/elicore/mdfu
+    description: Fuzzy finder for Markdown notes
+    skip_upload: auto
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }} [skip ci]"
+    repository:
+      owner: elicore
+      name: mdfu
+      branch: main
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 

@@ -1,0 +1,93 @@
+name: Brew
+
+on:
+  pull_request:
+    paths:
+      - ".goreleaser.yaml"
+      - "Casks/**"
+      - ".github/workflows/brew.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-check.yml"
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # PR / dispatch: build a snapshot cask and audit it.
+  # Snapshot URLs are not downloadable, so no `brew install` here.
+  cask-audit:
+    name: Cask audit (snapshot)
+    if: github.event_name != 'release'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: snapshot cask
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish
+      - name: locate generated cask
+        id: cask
+        run: |
+          set -euo pipefail
+          file=$(find dist -path '*Casks/*.rb' -print -quit)
+          if [ -z "$file" ]; then
+            echo "::error::no generated cask found under dist/"
+            find dist -maxdepth 3 -print
+            exit 1
+          fi
+          echo "path=$file" >> "$GITHUB_OUTPUT"
+          echo "Generated cask: $file"
+      # Modern Homebrew only accepts casks inside a tap directory, so stage
+      # the snapshot cask into a throwaway local tap for linting.
+      - name: brew style
+        run: |
+          set -euo pipefail
+          tap_dir="$(brew --repo)/Library/Taps/elicore/homebrew-mdfu"
+          mkdir -p "$tap_dir/Casks"
+          cp "${{ steps.cask.outputs.path }}" "$tap_dir/Casks/mdfu.rb"
+          brew style --cask "$tap_dir/Casks/mdfu.rb"
+      - name: ruby syntax check
+        run: ruby -c "${{ steps.cask.outputs.path }}"
+
+  # Post-release: the tap (Casks/mdfu.rb in this same repo) now points at
+  # real release assets, so prove `brew install` links the binary into PATH.
+  cask-install:
+    name: Cask install (${{ matrix.os }})
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: set up Homebrew (Linux only)
+        if: runner.os == 'Linux'
+        uses: Homebrew/actions/setup-homebrew@master
+      - name: tap and install
+        run: |
+          set -euo pipefail
+          brew tap elicore/mdfu
+          brew audit --strict --cask elicore/mdfu/mdfu
+          brew install --cask elicore/mdfu/mdfu
+      - name: binary is on PATH
+        run: |
+          set -euo pipefail
+          command -v mdfu
+          mdfu --version
+      - name: uninstall
+        run: brew uninstall --cask elicore/mdfu/mdfu

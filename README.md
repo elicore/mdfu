@@ -5,8 +5,13 @@ Fuzzy finder for Markdown notes — body text plus normalized frontmatter (OKF v
 Requires Go 1.25+.
 
 ```sh
+# Homebrew (prebuilt bottle, binary lands on PATH via `binaries: [mdfu]`)
+brew tap elicore/mdfu
+brew install --cask elicore/mdfu/mdfu
+
+# Go (installs into $(go env GOPATH)/bin — ensure it is on PATH)
 go install github.com/elicore/mdfu/cmd/mdfu@latest
-# or
+# or from source
 git clone https://github.com/elicore/mdfu && cd mdfu && go build -o mdfu ./cmd/mdfu
 
 ./mdfu --root testdata
