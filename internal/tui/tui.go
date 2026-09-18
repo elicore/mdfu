@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/elicore/mdfu/internal/model"
+	"github.com/elicore/mdfu/internal/open"
 )
 
 // Item is the TUI's view of a searchable document.
@@ -35,6 +36,10 @@ type Config struct {
 	Limit        int
 	ShowArchived bool
 	Preview      bool
+	// NoHyperlinks disables OSC 8 terminal hyperlinks in the preview. When set,
+	// markdown links fall back to the renderer's "label url" output so the
+	// target stays visible and copyable on terminals without hyperlink support.
+	NoHyperlinks bool
 }
 
 // globalFilter allows integration code to wire the real search filter
@@ -67,6 +72,9 @@ type Model struct {
 	height    int
 	confirmed bool
 	aborted   bool
+	// hyperlinks enables OSC 8 terminal hyperlinks and hides raw URLs in the
+	// preview; it is derived from Config.NoHyperlinks.
+	hyperlinks bool
 	// terms are the literal substrings derived from the current query and
 	// emphasized in the list and preview panes; matchRe is their compiled
 	// case-insensitive alternation (nil when there is nothing to highlight).
@@ -98,13 +106,14 @@ func NewModelWithFilter(items []Item, cfg Config, f FilterFunc) Model {
 	cp := make([]Item, len(items))
 	copy(cp, items)
 	m := Model{
-		items:    cp,
-		filter:   f,
-		input:    ti,
-		selected: make(map[string]bool),
-		showPrev: cfg.Preview,
-		showArch: cfg.ShowArchived,
-		limit:    cfg.Limit,
+		items:      cp,
+		filter:     f,
+		input:      ti,
+		selected:   make(map[string]bool),
+		showPrev:   cfg.Preview,
+		showArch:   cfg.ShowArchived,
+		limit:      cfg.Limit,
+		hyperlinks: !cfg.NoHyperlinks,
 	}
 	m.refilter()
 	return m
@@ -117,7 +126,8 @@ func (m Model) Init() tea.Cmd {
 
 // Update implements tea.Model. Keybindings:
 // up/down or ctrl-k/ctrl-j navigate, enter confirm, esc/ctrl-c abort,
-// tab toggle multi-select, ctrl-a toggle archived, ctrl-p toggle preview.
+// tab toggle multi-select, ctrl-a toggle archived, ctrl-p toggle preview,
+// ctrl-o open the previewed document's first web link.
 // All other keys go to the text input and trigger a refilter on change.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -179,6 +189,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "ctrl+p":
 			m.showPrev = !m.showPrev
+			return m, nil
+		case "ctrl+o":
+			if m.cursor >= 0 && m.cursor < len(m.filtered) {
+				if u := docFirstLink(m.filtered[m.cursor].Doc); u != "" {
+					_ = open.Open(u)
+				}
+			}
 			return m, nil
 		}
 		// Fall through to text input for typing/editing keys.
@@ -589,7 +606,7 @@ func (m Model) renderPreviewPane() string {
 		if prevW < 20 {
 			prevW = 20
 		}
-		text := previewTextHighlighted(it.Doc, prevW, m.matchRe)
+		text := previewTextHighlighted(it.Doc, prevW, m.matchRe, m.hyperlinks)
 		// MaxWidth (not Width) truncates the list lines so they cannot wrap
 		// and inflate the pane height. The preview is allowed to wrap, but is
 		// capped at the same row budget.
@@ -597,7 +614,7 @@ func (m Model) renderPreviewPane() string {
 		right := lipgloss.NewStyle().Width(prevW).MaxWidth(prevW).MaxHeight(m.visibleRows()).Render(limitLines(text, m.visibleRows()))
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 	}
-	text := previewTextHighlighted(it.Doc, m.width, m.matchRe)
+	text := previewTextHighlighted(it.Doc, m.width, m.matchRe, m.hyperlinks)
 	return lipgloss.NewStyle().Render(limitLines(text, m.previewRows()))
 }
 
@@ -625,16 +642,23 @@ func PreviewTextWidth(doc *model.Document, width int) string {
 
 // PreviewTextHighlighted is PreviewTextWidth with query match highlighting.
 // Terms are emphasized in both the metadata header and the rendered markdown
-// body; existing glamour/lipgloss styling is preserved.
+// body; existing glamour/lipgloss styling is preserved. It renders without
+// terminal hyperlinks; the TUI enables those via its own Config.
 func PreviewTextHighlighted(doc *model.Document, width int, terms []string) string {
-	return previewTextHighlighted(doc, width, termsRegexp(terms))
+	return previewTextHighlighted(doc, width, termsRegexp(terms), false)
 }
 
 // previewTextHighlighted is PreviewTextWidth with a precompiled match regexp.
-func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp) string {
+//
+// When hyperlinks is true, web links in the body are hidden behind their label
+// and exposed as OSC 8 terminal hyperlinks; the document's Resource URL is
+// shown as a clickable row. When false, links render as the usual "label url"
+// pair so the target remains copyable.
+func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp, hyperlinks bool) string {
 	if doc == nil {
 		return "(no preview)"
 	}
+	body, links := extractAndHide(BodyExcerpt(doc.Body, 30), hyperlinks)
 	var b strings.Builder
 	b.WriteString(stylePreviewH.Render("Preview"))
 	b.WriteString("\n")
@@ -649,9 +673,24 @@ func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp) s
 	if doc.Status != "" {
 		b.WriteString("Status: " + doc.Status + "\n")
 	}
+	if doc.Resource != "" {
+		b.WriteString("Resource: ")
+		if hyperlinks && isWebLink(doc.Resource) && len(links) < linkEndRune-linkStartBase {
+			idx := len(links)
+			links = append(links, linkInfo{Label: doc.Resource, URL: doc.Resource})
+			b.WriteRune(rune(linkStartBase + idx))
+			b.WriteString(doc.Resource)
+			b.WriteRune(linkEndRune)
+		} else {
+			b.WriteString(doc.Resource)
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("---\n")
-	b.WriteString(renderMarkdown(BodyExcerpt(doc.Body, 30), width))
-	return highlightRe(b.String(), re)
+	b.WriteString(renderMarkdown(body, width))
+	// Highlighting runs before hyperlink patching so the marker runes and the
+	// raw URLs are never treated as match candidates by highlightRe.
+	return patchLinks(highlightRe(b.String(), re), links, hyperlinks)
 }
 
 // Match highlighting. Matches are shown as black text on a bright-yellow
@@ -662,6 +701,11 @@ func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp) s
 const (
 	hlStart = "\x1b[1;30;103m"
 	hlReset = "\x1b[0m"
+
+	// linkSGR styles a hyperlink's label; resetSGR returns to the surrounding
+	// style when the label ends.
+	linkSGR  = "\x1b[1;4;38;5;212m"
+	resetSGR = "\x1b[0m"
 )
 
 // ansiSGRRe matches CSI Select-Graphic-Rendition sequences.
