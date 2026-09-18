@@ -187,18 +187,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View implements tea.Model.
+//
+// The rendered height is kept within the terminal: the list and preview pane
+// never render the list twice, and both are capped so the search input at the
+// top cannot be scrolled off-screen.
 func (m Model) View() string {
 	var b strings.Builder
 	b.WriteString(m.input.View())
 	b.WriteString("\n")
-	b.WriteString(m.renderList())
-	if m.showPrev {
-		b.WriteString("\n")
+	if m.showPrev && m.width >= 100 {
+		// Wide layout: list and preview side by side (renderPreviewPane
+		// renders the list itself, so it must not be emitted again here).
 		b.WriteString(m.renderPreviewPane())
+	} else {
+		b.WriteString(m.renderList())
+		if m.showPrev {
+			b.WriteString("\n")
+			b.WriteString(m.renderPreviewPane())
+		}
 	}
 	b.WriteString("\n")
 	b.WriteString(m.renderStatus())
-	return b.String()
+
+	// Final safety net: hard-clamp to the terminal so no line wraps and the
+	// total height cannot exceed the screen (which would scroll the search
+	// input off the top).
+	out := b.String()
+	if m.width > 0 || m.height > 0 {
+		clamp := lipgloss.NewStyle()
+		if m.width > 0 {
+			clamp = clamp.MaxWidth(m.width)
+		}
+		if m.height > 0 {
+			clamp = clamp.MaxHeight(m.height)
+		}
+		out = clamp.Render(out)
+	}
+	return out
 }
 
 // --- accessors for tests / integration ---
@@ -335,23 +360,49 @@ func (m *Model) ensureVisible() {
 	}
 }
 
+// visibleRows returns how many result rows the list may render. The preview
+// pane only competes for vertical space in the stacked (narrow) layout; in the
+// side-by-side layout both panes share the full body budget.
 func (m *Model) visibleRows() int {
-	if m.height > 0 {
-		// reserve: input(2) + status(1) + preview(~8 if shown) + margins
-		reserved := 4
-		if m.showPrev {
-			reserved += 9
-		}
-		n := m.height - reserved
-		if n < 5 {
-			n = 5
-		}
-		if n > 100 {
-			n = 100
-		}
-		return n
+	if m.height <= 0 {
+		return 20
 	}
-	return 20
+	reserved := 2 // input + status
+	if m.showPrev && m.width < 100 {
+		reserved += m.previewRows()
+	}
+	n := m.height - reserved
+	if n < 3 {
+		n = 3
+	}
+	return n
+}
+
+// previewRows returns the vertical budget for the stacked preview pane.
+func (m *Model) previewRows() int {
+	if m.height <= 0 {
+		return 10
+	}
+	p := (m.height - 2) / 3
+	if p < 3 {
+		p = 3
+	}
+	if p > 12 {
+		p = 12
+	}
+	return p
+}
+
+// limitLines truncates s to at most n lines.
+func limitLines(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func itemKey(it Item) string {
@@ -427,6 +478,9 @@ func (m Model) renderList() string {
 		return styleDim.Render("(no matches)")
 	}
 	maxRows := m.visibleRows()
+	if maxRows < 1 {
+		maxRows = 1
+	}
 	start := m.offset
 	if start < 0 {
 		start = 0
@@ -437,6 +491,12 @@ func (m Model) renderList() string {
 	end := start + maxRows
 	if end > len(m.filtered) {
 		end = len(m.filtered)
+	}
+	// Reserve the final row for the "... N more" hint so the list never
+	// renders taller than its budget.
+	more := end < len(m.filtered)
+	if more && maxRows > 1 {
+		end--
 	}
 	var b strings.Builder
 	for i := start; i < end; i++ {
@@ -505,11 +565,14 @@ func (m Model) renderPreviewPane() string {
 		if prevW < 20 {
 			prevW = 20
 		}
-		left := lipgloss.NewStyle().Width(listW).Render(m.renderList())
-		right := lipgloss.NewStyle().Width(prevW).Render(text)
+		// MaxWidth (not Width) truncates the list lines so they cannot wrap
+		// and inflate the pane height. The preview is allowed to wrap, but is
+		// capped at the same row budget.
+		left := lipgloss.NewStyle().MaxWidth(listW).Render(m.renderList())
+		right := lipgloss.NewStyle().Width(prevW).MaxWidth(prevW).MaxHeight(m.visibleRows()).Render(limitLines(text, m.visibleRows()))
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 	}
-	return lipgloss.NewStyle().Render(text)
+	return lipgloss.NewStyle().Render(limitLines(text, m.previewRows()))
 }
 
 func (m Model) renderStatus() string {

@@ -14,19 +14,23 @@ Implementation: `internal/search/search.go`. Two phases: hard-filter, then fuzzy
 - `Path`: substring-fold.
 - Dates: `Created`/`Updated` via `matchDate` (inclusive/exclusive `From`/`To`); `date`/`before`/`after` use either-semantics (`matchEither`). Nil timestamp never matches a present filter.
 
-## `Rank` — fuzzy scoring
+## `Rank` — bare-word scoring
 
 1. Filter via `MatchesDoc`.
 2. No bare words → sort by `Path`.
-3. Else `scoreDoc` per doc: every bare word must fuzzy-match `SearchBlob` (fallback `Title+" "+Body`) via `fuzzy.Find` — AND semantics, miss drops the doc. Score = sum of `fuzzy` scores + `+100` per word that is a case-insensitive substring of `Title` (`titleBoost`).
+3. Else `scoreDoc` per doc: every bare word must match — AND semantics, miss drops the doc. A word matches by case-insensitive substring of `SearchBlob` (fallback `Title+" "+Body`); only if that misses does it fall back to `sahilm/fuzzy` against the `Title`. Score = per-word base (match length, or the `fuzzy` score for the title fallback) + `+100` per word that is a case-insensitive substring of `Title` (`titleBoost`).
 4. Sort: score desc → most-recent `UpdatedAt` (nil = oldest) → `Path`.
+
+:::note[Why title-only fuzzy?]
+Running the subsequence fuzzy matcher over `SearchBlob` includes the whole body, so almost any short query matches hundreds of unrelated notes (e.g. `kumquat` matched 948 files in a real vault). Body/frontmatter matches therefore require a literal substring; fuzzy is reserved for the short, high-signal title.
+:::
 
 ## `FilterArchived`
 
 `Rank` never hides; `FilterArchived(docs, include)` / TUI `ctrl+a` layer applies hiding. `archived:true` / `status:archived` still match hidden docs.
 
 :::caution[Known bottleneck]
-`scoreDoc` calls `fuzzy.Find(word, []string{wholeBlob})` per doc per word — `O(docs × words × blobLen)`. No pre-lowercasing, no token pre-split, filter maps rebuilt per doc. Fine at fixture scale; the \<50ms/keystroke budget at 5k files needs the [Roadmap](/project/roadmap/) optimization tasks (lowered-blob cache, facet bitmaps, fuzzy-core benchmark).
+`scoreDoc` lowercases the whole `SearchBlob` per doc per keystroke and runs `fuzzy.Find` on misses. No pre-lowercasing, no token pre-split, filter maps rebuilt per doc. Fine at fixture scale; the \<50ms/keystroke budget at 5k files needs the [Roadmap](/project/roadmap/) optimization tasks (lowered-blob cache, facet bitmaps, fuzzy-core benchmark).
 :::
 
 See also: [Query Syntax](/guide/query-syntax/) for token semantics, and [Backend Evaluation](/reference/backend-evaluation/) for the indexed-alternative decision.

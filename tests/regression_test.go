@@ -292,3 +292,22 @@ func TestRegressionDateLayouts(t *testing.T) {
 		t.Fatalf("created:RFC3339 = %v, want [rfc.md]", baseList(got))
 	}
 }
+
+// 22. Bare words must not subsequence-match across a large body. The fuzzy
+// matcher previously matched "kumquat" against any body containing the letters
+// k,u,m,q,u,a,t in order, producing hundreds of false positives.
+func TestRegressionBareNoSubsequenceFalsePositive(t *testing.T) {
+	var filler strings.Builder
+	for i := 0; i < 200; i++ {
+		filler.WriteString("kangaroo under mountain quickly uses a telescope. ")
+	}
+	root := buildVault(t, map[string]string{
+		"hit.md":  "# Hit\n\nwe bought a kumquat at the market\n",
+		"miss.md": "# Miss\n\n" + filler.String() + "\n",
+	})
+	docs := loadDocs(t, root, false)
+	got := searchVault(t, docs, "kumquat")
+	if len(got) != 1 || filepath.Base(got[0].Path) != "hit.md" {
+		t.Fatalf("bare 'kumquat' = %v, want only [hit.md]", baseList(got))
+	}
+}

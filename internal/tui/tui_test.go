@@ -246,6 +246,35 @@ func TestPreviewText(t *testing.T) {
 	}
 }
 
+func TestViewFitsTerminalHeight(t *testing.T) {
+	long := &model.Document{Path: "a.md", Title: "alpha", Body: strings.Repeat("body line\n", 100)}
+	items := []Item{{Doc: long}, mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{Preview: true}, substringStub)
+
+	// Wide (side-by-side) layout must not duplicate the list or overflow,
+	// which previously scrolled the search input off the top of the screen.
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m = next.(Model)
+	v := m.View()
+	if got := len(strings.Split(v, "\n")); got > 24 {
+		t.Fatalf("wide view = %d lines, want <= 24:\n%s", got, v)
+	}
+	if !strings.HasPrefix(v, "> ") {
+		t.Fatalf("expected search input on first line, got:\n%s", v)
+	}
+
+	// Stacked (narrow) layout.
+	next, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = next.(Model)
+	v = m.View()
+	if got := len(strings.Split(v, "\n")); got > 24 {
+		t.Fatalf("narrow view = %d lines, want <= 24:\n%s", got, v)
+	}
+	if !strings.HasPrefix(v, "> ") {
+		t.Fatalf("expected search input on first line, got:\n%s", v)
+	}
+}
+
 func TestLimit(t *testing.T) {
 	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
 	m := NewModelWithFilter(items, Config{Limit: 2}, substringStub)

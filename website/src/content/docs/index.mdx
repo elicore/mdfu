@@ -40,21 +40,21 @@ go install github.com/elicore/mdfu/cmd/mdfu@latest
 git clone https://github.com/elicore/mdfu && cd mdfu && go build -o mdfu ./cmd/mdfu
 ```
 
-Run against the bundled fixtures (or your own notes root):
+Run it inside your notes folder — the root defaults to `.`:
 
 ```sh
-./mdfu --root testdata
-./mdfu --root testdata --filter "type:Task"
-./mdfu --root testdata --filter "tag:launch kumquat"
-./mdfu --root testdata --filter "status:Draft"
+cd testdata
+mdfu
+mdfu --filter "type:Task"
+mdfu --filter "status:Draft"
 ```
 
 Three filter examples to try first:
 
 ```sh
-mdfu --root testdata --filter "type:Task"       # → portent-task.md
-mdfu --root testdata --filter "tag:launch"      # → portent-task.md
-mdfu --root testdata --filter "author:bob"      # → generic.md (custom frontmatter)
+mdfu --filter "type:Task"       # → portent-task.md
+mdfu --filter "tag:launch"      # → portent-task.md
+mdfu --filter "author:bob"      # → generic.md (custom frontmatter)
 ```
 
 ## Explore

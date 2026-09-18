@@ -202,24 +202,38 @@ func FilterArchived(docs []*model.Document, includeArchived bool) []*model.Docum
 }
 
 // scoreDoc scores d against bare words. ok=false means a bare word had
-// no fuzzy match (AND semantics) and the doc should be excluded.
+// no match (AND semantics) and the doc should be excluded.
+//
+// The full search blob (which includes the body and all frontmatter) is
+// matched by case-insensitive substring. Running the subsequence fuzzy matcher
+// over a multi-thousand-word body makes almost any short query match (e.g.
+// "kumquat" matches hundreds of unrelated notes), so the fuzzy fallback is
+// restricted to the title, where typo tolerance is most useful and the text is
+// short enough to keep matches meaningful.
 func scoreDoc(d *model.Document, bare []string) (score int, ok bool) {
 	blob := d.SearchBlob
 	if strings.TrimSpace(blob) == "" {
 		blob = strings.TrimSpace(d.Title + " " + d.Body)
 	}
+	lowerBlob := strings.ToLower(blob)
+	lowerTitle := strings.ToLower(d.Title)
 	total := 0
 	for _, w := range bare {
 		w = strings.TrimSpace(w)
 		if w == "" {
 			continue
 		}
-		m := fuzzy.Find(w, []string{blob})
-		if len(m) == 0 {
-			return 0, false
+		lw := strings.ToLower(w)
+		if strings.Contains(lowerBlob, lw) {
+			total += len([]rune(lw))
+		} else {
+			m := fuzzy.Find(w, []string{d.Title})
+			if len(m) == 0 {
+				return 0, false
+			}
+			total += m[0].Score
 		}
-		total += m[0].Score
-		if strings.Contains(strings.ToLower(d.Title), strings.ToLower(w)) {
+		if strings.Contains(lowerTitle, lw) {
 			total += titleBoost
 		}
 	}

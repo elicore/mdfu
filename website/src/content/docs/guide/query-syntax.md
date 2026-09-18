@@ -1,13 +1,13 @@
 ---
 title: Query Syntax
-description: Single-box query language — bare words fuzzy-match, key:value hard-filters, AND-combined.
+description: Single-box query language — bare words match body/frontmatter (fuzzy title fallback), key:value hard-filters, AND-combined.
 ---
 
-Single-box input (`internal/query/query.go:Parse`). Bare words fuzzy-match; `key:value` tokens hard-filter. Tokens combine with **AND**. Keys case-insensitive; values preserve case. Quote multi-word values: `title:"Monthly Active"`. `|` alternation is **not** supported in v1 (reserved, see the [Roadmap](/project/roadmap/)).
+Single-box input (`internal/query/query.go:Parse`). Bare words substring-match the body/frontmatter (with a fuzzy title fallback); `key:value` tokens hard-filter. Tokens combine with **AND**. Keys case-insensitive; values preserve case. Quote multi-word values: `title:"Monthly Active"`. `|` alternation is **not** supported in v1 (reserved, see the [Roadmap](/project/roadmap/)).
 
 | Token | Meaning | Example |
 |---|---|---|
-| `word …` | Bare words, AND-combined, fuzzy-matched against `SearchBlob`. | `kumquat zebra` |
+| `word …` | Bare words, AND-combined. Case-insensitive substring match against `SearchBlob` (body + frontmatter), with a fuzzy fallback against the title only. | `kumquat zebra` |
 | `tag:v` / `tags:a,b` | Include tag(s), case-insensitive. `tags:` splits on commas. | `tag:launch` |
 | `-v` / `!v` inside tag value | Negate a tag. Only tag values support negation. | `tag:-launch` |
 | `type:V` | Normalized `type`, case-insensitive exact. | `type:Task` |
