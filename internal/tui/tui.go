@@ -2,10 +2,15 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
+	"sync"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/elicore/mdfu/internal/model"
@@ -62,6 +67,11 @@ type Model struct {
 	height    int
 	confirmed bool
 	aborted   bool
+	// terms are the literal substrings derived from the current query and
+	// emphasized in the list and preview panes; matchRe is their compiled
+	// case-insensitive alternation (nil when there is nothing to highlight).
+	terms   []string
+	matchRe *regexp.Regexp
 }
 
 // NewModel builds a Model with default (substring) filtering.
@@ -296,6 +306,8 @@ func (m *Model) ShowPreview() bool { return m.showPrev }
 
 func (m *Model) refilter() {
 	query := m.input.Value()
+	m.terms = queryTerms(query)
+	m.matchRe = termsRegexp(m.terms)
 	var base []Item
 	if m.filter != nil {
 		base = m.filter(query, m.items)
@@ -498,6 +510,7 @@ func (m Model) renderList() string {
 	if more && maxRows > 1 {
 		end--
 	}
+	multi := len(m.selected) > 0
 	var b strings.Builder
 	for i := start; i < end; i++ {
 		it := m.filtered[i]
@@ -505,11 +518,15 @@ func (m Model) renderList() string {
 		if i == m.cursor {
 			cursor = styleCursor.Render("> ")
 		}
-		sel := "  "
-		if m.selected[itemKey(it)] {
-			sel = styleSelected.Render("[x]")
-		} else {
-			sel = "[ ]"
+		// The per-row checkbox column is only meaningful (and shown) once
+		// multi-select is in use; until then it is visual noise.
+		var sel string
+		if multi {
+			if m.selected[itemKey(it)] {
+				sel = styleSelected.Render("[x]")
+			} else {
+				sel = "[ ]"
+			}
 		}
 		title := "(untitled)"
 		path := ""
@@ -528,7 +545,15 @@ func (m Model) renderList() string {
 				extra += " (archived)"
 			}
 		}
-		line := fmt.Sprintf("%s%s %s%s", cursor, sel, title, extra)
+		title = highlightRe(title, m.matchRe)
+		path = highlightRe(path, m.matchRe)
+		extra = highlightRe(extra, m.matchRe)
+		var line string
+		if multi {
+			line = fmt.Sprintf("%s%s %s%s", cursor, sel, title, extra)
+		} else {
+			line = fmt.Sprintf("%s%s%s", cursor, title, extra)
+		}
 		if i == m.cursor {
 			line = styleCursor.Render(line)
 		}
@@ -554,7 +579,6 @@ func (m Model) renderPreviewPane() string {
 	if it.Doc == nil {
 		return styleDim.Render("(no preview)")
 	}
-	text := PreviewText(it.Doc)
 	// Side-by-side when wide enough, stacked otherwise.
 	if m.width >= 100 {
 		listW := m.width/2 - 2
@@ -565,6 +589,7 @@ func (m Model) renderPreviewPane() string {
 		if prevW < 20 {
 			prevW = 20
 		}
+		text := previewTextHighlighted(it.Doc, prevW, m.matchRe)
 		// MaxWidth (not Width) truncates the list lines so they cannot wrap
 		// and inflate the pane height. The preview is allowed to wrap, but is
 		// capped at the same row budget.
@@ -572,6 +597,7 @@ func (m Model) renderPreviewPane() string {
 		right := lipgloss.NewStyle().Width(prevW).MaxWidth(prevW).MaxHeight(m.visibleRows()).Render(limitLines(text, m.visibleRows()))
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 	}
+	text := previewTextHighlighted(it.Doc, m.width, m.matchRe)
 	return lipgloss.NewStyle().Render(limitLines(text, m.previewRows()))
 }
 
@@ -584,9 +610,28 @@ func (m Model) renderStatus() string {
 	return styleStatus.Render(s)
 }
 
-// PreviewText renders Path/Title/Type/Tags plus a body excerpt of the
-// first 30 lines. Dependency-free (stdlib only) — no glow.
+// PreviewText renders the default-width preview: frontmatter fields plus a
+// syntax-highlighted markdown excerpt of the first 30 body lines.
 func PreviewText(doc *model.Document) string {
+	return PreviewTextWidth(doc, 80)
+}
+
+// PreviewTextWidth is PreviewText rendered to fit width terminal columns.
+// The metadata header is drawn with lipgloss; the body excerpt is rendered
+// as highlighted markdown via glamour.
+func PreviewTextWidth(doc *model.Document, width int) string {
+	return PreviewTextHighlighted(doc, width, nil)
+}
+
+// PreviewTextHighlighted is PreviewTextWidth with query match highlighting.
+// Terms are emphasized in both the metadata header and the rendered markdown
+// body; existing glamour/lipgloss styling is preserved.
+func PreviewTextHighlighted(doc *model.Document, width int, terms []string) string {
+	return previewTextHighlighted(doc, width, termsRegexp(terms))
+}
+
+// previewTextHighlighted is PreviewTextWidth with a precompiled match regexp.
+func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp) string {
 	if doc == nil {
 		return "(no preview)"
 	}
@@ -605,8 +650,301 @@ func PreviewText(doc *model.Document) string {
 		b.WriteString("Status: " + doc.Status + "\n")
 	}
 	b.WriteString("---\n")
-	b.WriteString(BodyExcerpt(doc.Body, 30))
-	return b.String()
+	b.WriteString(renderMarkdown(BodyExcerpt(doc.Body, 30), width))
+	return highlightRe(b.String(), re)
+}
+
+// Match highlighting. Matches are shown as black text on a bright-yellow
+// background. highlight works on text that already contains SGR sequences
+// (lipgloss/glamour output): escape sequences pass through untouched and the
+// active style is restored after each emphasized span.
+
+const (
+	hlStart = "\x1b[1;30;103m"
+	hlReset = "\x1b[0m"
+)
+
+// ansiSGRRe matches CSI Select-Graphic-Rendition sequences.
+var ansiSGRRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// queryTerms extracts the literal substrings worth emphasizing from a raw
+// query. It is deliberately syntax-light: bare words and key:value values are
+// kept, while date expressions and negated tags are skipped.
+func queryTerms(q string) []string {
+	var terms []string
+	add := func(t string) {
+		t = strings.TrimSpace(t)
+		if t == "" || !hasWordRune(t) {
+			return
+		}
+		terms = append(terms, t)
+		// A multi-word value (e.g. a quoted phrase) is also matched word by
+		// word so it can be emphasized even when markdown splits the phrase
+		// across styled runs.
+		if fields := strings.Fields(t); len(fields) > 1 {
+			for _, f := range fields {
+				terms = append(terms, f)
+			}
+		}
+	}
+	for _, tok := range splitQueryTokens(q) {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		i := strings.Index(tok, ":")
+		if i < 0 {
+			add(stripWrappingQuotes(tok))
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(tok[:i]))
+		val := tok[i+1:]
+		switch key {
+		case "created", "updated", "date", "before", "after":
+			continue
+		case "tag", "tags":
+			for _, p := range strings.Split(val, ",") {
+				p = stripWrappingQuotes(strings.TrimSpace(p))
+				if p == "" || strings.HasPrefix(p, "-") || strings.HasPrefix(p, "!") {
+					continue
+				}
+				add(p)
+			}
+		default:
+			add(stripWrappingQuotes(strings.TrimSpace(val)))
+		}
+	}
+	return terms
+}
+
+// hasWordRune reports whether s contains at least one letter or digit, so
+// punctuation-only query fragments are not treated as highlight terms.
+func hasWordRune(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// splitQueryTokens splits on whitespace while respecting double quotes.
+func splitQueryTokens(input string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inQuotes := false
+	flush := func() {
+		if cur.Len() > 0 {
+			tokens = append(tokens, cur.String())
+			cur.Reset()
+		}
+	}
+	for _, r := range input {
+		switch {
+		case r == '"':
+			inQuotes = !inQuotes
+			cur.WriteRune(r)
+		case unicode.IsSpace(r) && !inQuotes:
+			flush()
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	flush()
+	return tokens
+}
+
+// stripWrappingQuotes removes one pair of surrounding double quotes.
+func stripWrappingQuotes(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+// termsRegexp builds a case-insensitive alternation of the literal terms,
+// longest first so the most specific match wins. Returns nil when there is
+// nothing to highlight.
+func termsRegexp(terms []string) *regexp.Regexp {
+	seen := make(map[string]bool, len(terms))
+	uniq := make([]string, 0, len(terms))
+	for _, t := range terms {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		lt := strings.ToLower(t)
+		if seen[lt] {
+			continue
+		}
+		seen[lt] = true
+		uniq = append(uniq, t)
+	}
+	if len(uniq) == 0 {
+		return nil
+	}
+	// Longest first so the most specific alternative wins.
+	sort.Slice(uniq, func(i, j int) bool { return len(uniq[i]) > len(uniq[j]) })
+	quoted := make([]string, len(uniq))
+	for i, t := range uniq {
+		quoted[i] = regexp.QuoteMeta(t)
+	}
+	re, err := regexp.Compile("(?i)(" + strings.Join(quoted, "|") + ")")
+	if err != nil {
+		return nil
+	}
+	return re
+}
+
+// highlight emphasizes terms in s, compiling their match regexp on the fly.
+// Callers rendering many strings should prefer highlightRe with a cached regexp.
+func highlight(s string, terms []string) string {
+	return highlightRe(s, termsRegexp(terms))
+}
+
+// highlightRe emphasizes every occurrence matched by re in s. It is safe on
+// text containing ANSI SGR sequences: they are preserved and the style active
+// at the start of a span is re-applied after it ends.
+func highlightRe(s string, re *regexp.Regexp) string {
+	if re == nil || s == "" {
+		return s
+	}
+	var out strings.Builder
+	var active strings.Builder
+	i := 0
+	for i < len(s) {
+		loc := ansiSGRRe.FindStringIndex(s[i:])
+		if loc != nil && loc[0] == 0 {
+			seq := s[i : i+loc[1]]
+			out.WriteString(seq)
+			updateActiveSGR(&active, seq)
+			i += loc[1]
+			continue
+		}
+		end := len(s)
+		if loc != nil {
+			end = i + loc[0]
+		}
+		writeHighlightedRun(&out, s[i:end], re, active.String())
+		i = end
+	}
+	return out.String()
+}
+
+// writeHighlightedRun wraps term matches inside a single unstyled run (a span
+// free of ANSI escapes) and restores active afterwards.
+func writeHighlightedRun(out *strings.Builder, run string, re *regexp.Regexp, active string) {
+	if run == "" {
+		return
+	}
+	idxs := re.FindAllStringIndex(run, -1)
+	if len(idxs) == 0 {
+		out.WriteString(run)
+		return
+	}
+	last := 0
+	for _, m := range idxs {
+		out.WriteString(run[last:m[0]])
+		out.WriteString(hlStart)
+		out.WriteString(run[m[0]:m[1]])
+		out.WriteString(hlReset)
+		out.WriteString(active)
+		last = m[1]
+	}
+	out.WriteString(run[last:])
+}
+
+// updateActiveSGR tracks the cumulative SGR state so it can be re-applied
+// after an emphasized span. A reset clears the accumulated state.
+func updateActiveSGR(active *strings.Builder, seq string) {
+	params := strings.TrimSuffix(strings.TrimPrefix(seq, "\x1b["), "m")
+	reset := params == "" || params == "0"
+	if !reset {
+		for _, p := range strings.Split(params, ";") {
+			if p == "0" {
+				reset = true
+				break
+			}
+		}
+	}
+	if reset {
+		active.Reset()
+		if params == "" || params == "0" {
+			return
+		}
+	}
+	active.WriteString(seq)
+}
+
+// previewRenderers caches one glamour renderer per word-wrap width; building a
+// renderer is far more expensive than rendering a 30-line excerpt, and the pane
+// width is stable while browsing.
+var (
+	previewRenderers = map[int]*glamour.TermRenderer{}
+	previewRenderMu  sync.Mutex
+	// markdownStyle is the glamour standard style ("dark" or "light"). It is
+	// resolved once before the BubbleTea program starts so View never probes
+	// the terminal (which would race with BubbleTea's input reader). Empty
+	// falls back to "dark", which keeps headless rendering deterministic.
+	markdownStyle string
+)
+
+// SetMarkdownStyle records the terminal background style used for markdown
+// previews and drops any cached renderers. Call it before Run for light
+// terminals; the default is dark.
+func SetMarkdownStyle(style string) {
+	previewRenderMu.Lock()
+	if style != "light" {
+		style = "dark"
+	}
+	markdownStyle = style
+	previewRenderers = map[int]*glamour.TermRenderer{}
+	previewRenderMu.Unlock()
+}
+
+// renderMarkdown converts a markdown excerpt to ANSI-highlighted text wrapped
+// to width. On any error it falls back to the raw source so previews never
+// disappear.
+func renderMarkdown(src string, width int) string {
+	if width < 20 {
+		width = 20
+	}
+	// glamour's default document style indents each line by two columns
+	// outside the word-wrap budget; subtract it so the rendered pane never
+	// exceeds the width the caller allocated.
+	wrap := width - 2
+	if wrap < 10 {
+		wrap = 10
+	}
+	previewRenderMu.Lock()
+	r := previewRenderers[wrap]
+	if r == nil {
+		style := markdownStyle
+		if style == "" {
+			style = "dark"
+		}
+		nr, err := glamour.NewTermRenderer(
+			glamour.WithStandardStyle(style),
+			glamour.WithWordWrap(wrap),
+			glamour.WithPreservedNewLines(),
+		)
+		if err != nil {
+			previewRenderMu.Unlock()
+			return src
+		}
+		r = nr
+		previewRenderers[wrap] = r
+	}
+	previewRenderMu.Unlock()
+
+	out, err := r.Render(src)
+	if err != nil {
+		return src
+	}
+	// The renderer frames the document with blank lines; drop the leading one
+	// so the excerpt sits directly under the metadata separator.
+	return strings.Trim(out, "\n")
 }
 
 // BodyExcerpt returns the first n lines of body.
@@ -636,6 +974,13 @@ func Run(items []Item, cfg Config) ([]Item, error) {
 func RunWithFilter(items []Item, cfg Config, f FilterFunc) ([]Item, error) {
 	if f == nil {
 		f = globalFilter
+	}
+	// Resolve the markdown preview theme while the terminal is still in cooked
+	// mode; probing from inside View would race BubbleTea's input reader.
+	if lipgloss.HasDarkBackground() {
+		SetMarkdownStyle("dark")
+	} else {
+		SetMarkdownStyle("light")
 	}
 	m := NewModelWithFilter(items, cfg, f)
 	p := tea.NewProgram(m, tea.WithAltScreen())

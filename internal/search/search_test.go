@@ -210,6 +210,43 @@ func TestRankTitleBoost(t *testing.T) {
 	}
 }
 
+func TestRankExactWordBeatsLongerWord(t *testing.T) {
+	// Documents titled with longer words that merely contain the query as a
+	// substring must not outrank an exact/whole-word title match, even when
+	// they are more recent.
+	butter := &model.Document{Path: "butter.md", Title: "Butter", SearchBlob: "Butter\nunsalted butter", UpdatedAt: timePtr("2024-01-01")}
+	buttermilk := &model.Document{Path: "buttermilk.md", Title: "Buttermilk", SearchBlob: "Buttermilk\npancakes", UpdatedAt: timePtr("2024-06-01")}
+	butternut := &model.Document{Path: "butternut.md", Title: "Butternut squash", SearchBlob: "Butternut squash\nsoup", UpdatedAt: timePtr("2024-06-01")}
+	q := mustParse(t, "butter")
+	got := Rank([]*model.Document{buttermilk, butternut, butter}, q)
+	if len(got) != 3 {
+		t.Fatalf("Rank len = %d, want 3", len(got))
+	}
+	if got[0].Path != "butter.md" {
+		t.Fatalf("exact word should rank first, got %v", paths(got))
+	}
+}
+
+func TestContainsWord(t *testing.T) {
+	cases := []struct {
+		text, word string
+		want       bool
+	}{
+		{"butter", "butter", true},
+		{"buttermilk", "butter", false},
+		{"butternut squash", "butter", false},
+		{"unsalted butter", "butter", true},
+		{"butter-chicken", "butter", true},
+		{"peanut butter", "butter", true},
+		{"", "butter", false},
+	}
+	for _, c := range cases {
+		if got := containsWord(c.text, c.word); got != c.want {
+			t.Errorf("containsWord(%q, %q) = %v, want %v", c.text, c.word, got, c.want)
+		}
+	}
+}
+
 func TestRankEmptyBareSortedByPath(t *testing.T) {
 	b := &model.Document{Path: "b.md", Title: "B"}
 	a := &model.Document{Path: "a.md", Title: "A"}

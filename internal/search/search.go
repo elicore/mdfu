@@ -6,15 +6,22 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/elicore/mdfu/internal/model"
 	"github.com/elicore/mdfu/internal/query"
 	"github.com/sahilm/fuzzy"
 )
 
-// titleBoost is added to the fuzzy score for each bare word that
-// case-insensitively appears as a substring of the document title.
-const titleBoost = 100
+// Title match scoring. An exact-title hit beats a whole-word hit, which in
+// turn beats a substring buried inside a longer title word. This keeps a
+// search for "butter" from tying with titles like "Buttermilk"/"Butternut".
+const (
+	exactTitleBoost   = 200 // title is exactly the bare word
+	titleBoost        = 100 // bare word appears as a whole word in the title
+	partialTitleBoost = 50  // bare word appears inside a longer title word
+)
 
 // MatchesDoc reports whether d satisfies all hard filters in q.
 // Bare words are NOT checked here; they only affect Rank scoring.
@@ -113,9 +120,10 @@ func MatchesDoc(d *model.Document, q *query.Query) bool {
 	return true
 }
 
-// Rank filters docs via MatchesDoc, then scores Bare words with
-// sahilm/fuzzy against SearchBlob (fallback Title+Body).
-// Sort is score desc, tie-break most-recent UpdatedAt, then Path.
+// Rank filters docs via MatchesDoc, then scores each bare word per doc
+// (see scoreDoc): the word must match (AND semantics), and its contribution
+// is the substring match length plus a graded title boost. Sort is score
+// desc, tie-break most-recent UpdatedAt, then Path.
 // Empty Bare returns filtered docs sorted by Path.
 func Rank(docs []*model.Document, q *query.Query) []*model.Document {
 	filtered := make([]*model.Document, 0, len(docs))
@@ -210,13 +218,25 @@ func FilterArchived(docs []*model.Document, includeArchived bool) []*model.Docum
 // "kumquat" matches hundreds of unrelated notes), so the fuzzy fallback is
 // restricted to the title, where typo tolerance is most useful and the text is
 // short enough to keep matches meaningful.
+//
+// Per bare word the score adds:
+//
+//	len(word)              substring found in the blob (body/frontmatter)
+//	fuzzy score            not in blob, but fuzzy-matches the title
+//	+ exactTitleBoost      title equals the word exactly
+//	+ titleBoost           word appears as a whole word in the title
+//	+ partialTitleBoost    word appears inside a longer title word
+//
+// The last three are mutually exclusive (see titleMatchBoost). So a search
+// for "butter" scores "Butter" (200 + 6) above "Buttermilk" (50 + 6), which
+// in turn edges out a body-only mention (6).
 func scoreDoc(d *model.Document, bare []string) (score int, ok bool) {
 	blob := d.SearchBlob
 	if strings.TrimSpace(blob) == "" {
 		blob = strings.TrimSpace(d.Title + " " + d.Body)
 	}
 	lowerBlob := strings.ToLower(blob)
-	lowerTitle := strings.ToLower(d.Title)
+	lowerTitle := strings.ToLower(strings.TrimSpace(d.Title))
 	total := 0
 	for _, w := range bare {
 		w = strings.TrimSpace(w)
@@ -233,11 +253,62 @@ func scoreDoc(d *model.Document, bare []string) (score int, ok bool) {
 			}
 			total += m[0].Score
 		}
-		if strings.Contains(lowerTitle, lw) {
-			total += titleBoost
-		}
+		total += titleMatchBoost(lowerTitle, lw)
 	}
 	return total, true
+}
+
+// titleMatchBoost grades how the bare word appears in the lowercased,
+// trimmed title: an exact title match outranks a whole-word match, which
+// outranks a substring inside a longer word (or no match at all).
+func titleMatchBoost(lowerTitle, lw string) int {
+	switch {
+	case lw == "" || lowerTitle == "":
+		return 0
+	case lowerTitle == lw:
+		return exactTitleBoost
+	case containsWord(lowerTitle, lw):
+		return titleBoost
+	case strings.Contains(lowerTitle, lw):
+		return partialTitleBoost
+	default:
+		return 0
+	}
+}
+
+// containsWord reports whether word occurs in text delimited by non-word
+// characters, so "butter" matches "Butter chicken" but not "Buttermilk".
+func containsWord(text, word string) bool {
+	if word == "" {
+		return false
+	}
+	offset := 0
+	for {
+		i := strings.Index(text[offset:], word)
+		if i < 0 {
+			return false
+		}
+		start := offset + i
+		end := start + len(word)
+		beforeOK := start == 0
+		if !beforeOK {
+			r, _ := utf8.DecodeLastRuneInString(text[:start])
+			beforeOK = !isWordRune(r)
+		}
+		afterOK := end >= len(text)
+		if !afterOK {
+			r, _ := utf8.DecodeRuneInString(text[end:])
+			afterOK = !isWordRune(r)
+		}
+		if beforeOK && afterOK {
+			return true
+		}
+		offset = start + 1
+	}
+}
+
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }
 
 // fuzzyContainsFold reports case-insensitive substring or fuzzy match.

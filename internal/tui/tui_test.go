@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -9,6 +10,12 @@ import (
 
 	"github.com/elicore/mdfu/internal/model"
 )
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// stripANSI removes SGR sequences so tests can assert on the visible text of
+// glamour-highlighted previews.
+func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
 func boolPtr(b bool) *bool { return &b }
 
@@ -232,7 +239,7 @@ func TestPreviewText(t *testing.T) {
 		Tags:    []string{"foo", "bar"},
 		Body:    body.String(),
 	}
-	txt := PreviewText(doc)
+	txt := stripANSI(PreviewText(doc))
 	for _, want := range []string{"notes/a.md", "My Note", "Note", "foo", "bar", "line 1", "line 30"} {
 		if !strings.Contains(txt, want) {
 			t.Fatalf("expected preview to contain %q, got:\n%s", want, txt)
@@ -243,6 +250,106 @@ func TestPreviewText(t *testing.T) {
 	}
 	if got := len(strings.Split(BodyExcerpt(body.String(), 30), "\n")); got != 30 {
 		t.Fatalf("expected 30-line excerpt, got %d", got)
+	}
+}
+
+func TestPreviewRendersHighlightedMarkdown(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Note",
+		Body:  "# Heading\n\nSome **bold** text and `code`.\n",
+	}
+	out := PreviewText(doc)
+	if !strings.Contains(out, "\x1b[") {
+		t.Fatalf("expected ANSI highlighting in preview, got:\n%q", out)
+	}
+	plain := stripANSI(out)
+	for _, raw := range []string{"# Heading", "**bold**", "`code`"} {
+		if strings.Contains(plain, raw) {
+			t.Fatalf("expected markdown syntax %q to be rendered, got:\n%s", raw, plain)
+		}
+	}
+	for _, want := range []string{"Heading", "bold", "code"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("expected %q in rendered preview, got:\n%s", want, plain)
+		}
+	}
+}
+
+func TestQueryTerms(t *testing.T) {
+	got := queryTerms(`tag:launch,beta "ship mdfu" created:2024 bare tag:-skip`)
+	want := map[string]bool{
+		"launch": true, "beta": true, "ship mdfu": true, "ship": true,
+		"mdfu": true, "bare": true,
+	}
+	for _, term := range got {
+		if !want[term] {
+			t.Fatalf("unexpected highlight term %q (got %v)", term, got)
+		}
+		delete(want, term)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing highlight terms %v (got %v)", want, got)
+	}
+	for _, term := range got {
+		if term == "2024" || term == "skip" {
+			t.Fatalf("date/negated term should not be highlighted: %v", got)
+		}
+	}
+}
+
+func TestHighlightPreservesANSI(t *testing.T) {
+	in := "\x1b[31mhello world\x1b[0m"
+	got := highlight(in, []string{"world"})
+	want := "\x1b[31mhello " + hlStart + "world" + hlReset + "\x1b[31m\x1b[0m"
+	if got != want {
+		t.Fatalf("highlight mismatch:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestListHighlightsQueryMatch(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m.SetQuery("alp")
+	v := m.View()
+	if !strings.Contains(v, hlStart) {
+		t.Fatalf("expected highlighted list match, got:\n%q", v)
+	}
+	if !strings.Contains(v, hlStart+"alp") {
+		t.Fatalf("expected the matched query text to be emphasized, got:\n%q", v)
+	}
+}
+
+func TestPreviewHighlightsQueryMatch(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Parser Notes",
+		Body:  "Finish the parser track.\n",
+	}
+	out := PreviewTextHighlighted(doc, 80, []string{"parser"})
+	if !strings.Contains(out, hlStart) {
+		t.Fatalf("expected highlighted preview match, got:\n%q", out)
+	}
+	if plain := stripANSI(out); !strings.Contains(plain, "Parser") || !strings.Contains(plain, "parser") {
+		t.Fatalf("expected matched text to remain visible, got:\n%s", plain)
+	}
+}
+
+func TestCheckboxesOnlyWhenMultiSelecting(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	if v := stripANSI(m.View()); strings.Contains(v, "[ ]") || strings.Contains(v, "[x]") {
+		t.Fatalf("expected no checkboxes before multi-select, got:\n%s", v)
+	}
+	m = applyKey(m, key(tea.KeyTab))
+	v := stripANSI(m.View())
+	if !strings.Contains(v, "[x]") || !strings.Contains(v, "[ ]") {
+		t.Fatalf("expected checkboxes once multi-select is active, got:\n%s", v)
+	}
+	// Deselecting the only item hides the column again.
+	m = applyKey(m, key(tea.KeyTab))
+	if v := stripANSI(m.View()); strings.Contains(v, "[ ]") || strings.Contains(v, "[x]") {
+		t.Fatalf("expected checkboxes hidden after deselect, got:\n%s", v)
 	}
 }
 
