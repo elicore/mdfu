@@ -5,7 +5,7 @@ description: Flags, output formats, exit codes, and testdata examples.
 
 ```sh
 mdfu [--root DIR] [--hidden] [--no-ignore] [--limit N] [--archived]
-       [--filter QUERY] [--format paths|json|vimgrep] [--version]
+       [--no-hyperlinks] [--filter QUERY] [--format paths|json|vimgrep] [--version]
 ```
 
 | Flag | Default | Meaning |
@@ -17,6 +17,7 @@ mdfu [--root DIR] [--hidden] [--no-ignore] [--limit N] [--archived]
 | `--filter QUERY` | — | Non-interactive mode; omit for TUI. Query language: [Query Syntax](/guide/query-syntax/). |
 | `--format F` | `paths` | `paths` (one path/line, fzf-compatible), `json` (`[{path,score,title,type,snippet}]` indented), `vimgrep` (`path:1:1:title`). Unknown → exit `2`. |
 | `--archived` | off | Include archived docs (else `FilterArchived` hides them; they stay searchable). |
+| `--no-hyperlinks` | off | TUI only: render markdown links as `label url` instead of OSC 8 terminal hyperlinks (use on terminals without hyperlink support). See [TUI](/guide/tui/#links). |
 | `--version` | — | Print version (`-ldflags "-X main.version=…"`) and exit. |
 
 Exit codes: `0` = ≥1 match, `1` = no match, `2` = usage error (e.g. bad `--format`).
