@@ -305,6 +305,14 @@ func (m *Model) ShowPreview() bool { return m.showPrev }
 // --- internal filtering ---
 
 func (m *Model) refilter() {
+	// Remember which document the cursor was on before the list is rebuilt so a
+	// query change can keep the same document selected instead of silently
+	// re-pointing the cursor at whichever document now occupies that row.
+	prevKey := ""
+	if m.cursor >= 0 && m.cursor < len(m.filtered) {
+		prevKey = itemKey(m.filtered[m.cursor])
+	}
+
 	query := m.input.Value()
 	m.terms = queryTerms(query)
 	m.matchRe = termsRegexp(m.terms)
@@ -335,6 +343,17 @@ func (m *Model) refilter() {
 		base = base[:m.limit]
 	}
 	m.filtered = base
+
+	// Re-anchor the cursor: follow the same document into the new result set
+	// when it survives the change, otherwise start over at the top.
+	if prevKey != "" {
+		if idx := indexOfKey(base, prevKey); idx >= 0 {
+			m.cursor = idx
+		} else {
+			m.cursor = 0
+			m.offset = 0
+		}
+	}
 	m.clampCursor()
 	m.ensureVisible()
 }
@@ -441,6 +460,17 @@ func itemKey(it Item) string {
 		return fmt.Sprintf("ptr:%p", it.Doc)
 	}
 	return fmt.Sprintf("nil:%v", it.Score)
+}
+
+// indexOfKey returns the position of the first item with the given key, or -1
+// when no item matches.
+func indexOfKey(items []Item, key string) int {
+	for i := range items {
+		if itemKey(items[i]) == key {
+			return i
+		}
+	}
+	return -1
 }
 
 // defaultFilter is a stdlib-only AND-substring fallback used until the real

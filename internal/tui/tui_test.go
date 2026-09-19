@@ -117,6 +117,60 @@ func TestCursorMovement(t *testing.T) {
 	}
 }
 
+// A query change that keeps the selected document in the results must leave
+// the cursor on that document, even when its row index moves.
+func TestCursorTracksDocumentAcrossQueryChange(t *testing.T) {
+	items := []Item{
+		mkItem("a.md", "alpha"),
+		mkItem("b.md", "beta"),
+		mkItem("g.md", "gamma"),
+		mkItem("d.md", "delta"),
+	}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m = applyKey(m, key(tea.KeyDown)) // beta
+	m = applyKey(m, key(tea.KeyDown)) // gamma
+	m = applyKey(m, key(tea.KeyDown)) // delta
+	if got := m.FilteredItems()[m.CursorIndex()].Doc.Path; got != "d.md" {
+		t.Fatalf("precondition: expected cursor on d.md, got %q", got)
+	}
+
+	m.SetQuery("ta") // matches beta and delta, dropping alpha and gamma
+	if got := m.FilteredItems(); len(got) != 2 || got[0].Doc.Path != "b.md" || got[1].Doc.Path != "d.md" {
+		t.Fatalf("expected [b.md d.md] after query, got %v", got)
+	}
+	if m.CursorIndex() != 1 {
+		t.Fatalf("expected cursor on d.md at index 1, got %d", m.CursorIndex())
+	}
+	if got := m.FilteredItems()[m.CursorIndex()].Doc.Path; got != "d.md" {
+		t.Fatalf("expected cursor to track d.md, got %q", got)
+	}
+}
+
+// When the selected document is filtered out entirely, the cursor resets to
+// the top of the new list rather than clamping to a different document.
+func TestCursorResetsWhenDocumentFilteredOut(t *testing.T) {
+	items := []Item{
+		mkItem("a.md", "alpha"),
+		mkItem("b.md", "beta"),
+		mkItem("g.md", "gamma"),
+		mkItem("d.md", "delta"),
+	}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m = applyKey(m, key(tea.KeyDown)) // beta
+	m = applyKey(m, key(tea.KeyDown)) // gamma
+	if got := m.FilteredItems()[m.CursorIndex()].Doc.Path; got != "g.md" {
+		t.Fatalf("precondition: expected cursor on g.md, got %q", got)
+	}
+
+	m.SetQuery("ta") // beta and delta survive, gamma does not
+	if m.CursorIndex() != 0 {
+		t.Fatalf("expected cursor reset to 0, got %d", m.CursorIndex())
+	}
+	if got := m.FilteredItems()[0].Doc.Path; got != "b.md" {
+		t.Fatalf("expected top item b.md, got %q", got)
+	}
+}
+
 func TestToggleSelectMulti(t *testing.T) {
 	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
 	m := NewModelWithFilter(items, Config{}, substringStub)
