@@ -9,7 +9,7 @@ Launch by omitting `--filter`:
 mdfu [--root DIR] [--hidden] [--limit N] [--archived]
 ```
 
-Type to narrow — bare words fuzzy, `key:value` hard-filters via the live `FilterFunc` (`scan → parse → query → rank` on every keystroke). Query terms are emphasized (yellow background) in both the result list and the preview pane; matches compose with the markdown syntax highlighting. `Enter` prints the selection (pipeable to editors/fzf flows).
+Type to narrow — bare words fuzzy, `key:value` hard-filters via the live `FilterFunc` (`scan → parse → query → rank` on every keystroke). Query terms are emphasized (yellow background) in both the result list and the preview pane; matches compose with the markdown syntax highlighting. Editing the query re-anchors the cursor: if the selected document survives into the new results it stays selected, otherwise the cursor resets to the top. `Enter` prints the selection (pipeable to editors/fzf flows).
 
 ## Keybindings (`internal/tui/tui.go:Model.Update`)
 
