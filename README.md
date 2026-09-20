@@ -61,6 +61,29 @@ mdfu --filter "kumquat zebra"       # → bad-yaml.md (broken YAML stays searcha
 go build ./... && go test ./...
 ```
 
+### Local CI (run the GitHub Actions locally)
+
+The workflows under `.github/workflows/` can be run locally with
+[`act`](https://github.com/nektos/act). Docker is required; `act` is
+auto-installed on first use (Homebrew, then `go install`).
+
+```sh
+make act-list          # list workflows/jobs act can run
+make act-ci            # gofmt, vet, race tests, coverage, cross-build matrix
+make act-module-guard  # single-module layout guard
+make act-docs          # Starlight build + internal link check
+make act-release-check # GoReleaser snapshot
+make act-all           # all of the above
+```
+
+Each run executes from a clean temporary context (untracked worktrees and build
+output excluded) while still overlaying your uncommitted changes, so local edits
+are tested as CI would see them.
+
+These workflows cannot run locally — they need GitHub-hosted backends or a
+macOS runner: `codeql.yml`, `pages.yml` (deploy job), `release-please.yml`,
+`brew.yml`, and `release.yml` (requires a real tag).
+
 ## Docs
 
 Documentation is an Astro Starlight site under `website/`.
