@@ -502,6 +502,21 @@ func TestPreviewRelativeLinkIsPlainLabel(t *testing.T) {
 	}
 }
 
+func TestPreviewKeepsBalancedParensInLinkTarget(t *testing.T) {
+	doc := &model.Document{
+		Path:  "notes/a.md",
+		Title: "Note",
+		Body:  "See [docs](https://example.com/a_(b)) now.\n",
+	}
+	out := previewTextHighlighted(doc, 80, nil, true)
+	if !strings.Contains(out, ansi.SetHyperlink("https://example.com/a_(b)")) {
+		t.Fatalf("expected full destination with balanced parens, got:\n%q", out)
+	}
+	if got := docFirstLink(doc); got != "https://example.com/a_(b)" {
+		t.Fatalf("docFirstLink = %q, want full URL", got)
+	}
+}
+
 func TestPreviewLeavesCodeUntouched(t *testing.T) {
 	doc := &model.Document{
 		Path:  "notes/a.md",
@@ -572,6 +587,49 @@ func TestDocFirstLink(t *testing.T) {
 	none := &model.Document{Resource: "notes/x.md", Body: "no links"}
 	if got := docFirstLink(none); got != "" {
 		t.Fatalf("no link: got %q", got)
+	}
+}
+
+func TestExtractAndHideSkipsImages(t *testing.T) {
+	src := "![diagram](https://img.example/d_(1).png) then [doc](https://doc.example)\n"
+	out, links := extractAndHide(src, true)
+	if len(links) != 1 || links[0].URL != "https://doc.example" {
+		t.Fatalf("expected only the real link, got %+v", links)
+	}
+	if !strings.Contains(out, "![diagram](https://img.example/d_(1).png)") {
+		t.Fatalf("image construct must pass through unchanged, got %q", out)
+	}
+	if got := docFirstLink(&model.Document{Body: src}); got != "https://doc.example" {
+		t.Fatalf("docFirstLink = %q, want the body link", got)
+	}
+}
+
+func TestCloseOpenHyperlinks(t *testing.T) {
+	open := "before " + ansi.SetHyperlink("https://charm.sh") + "Charm"
+	if got := closeOpenHyperlinks(open); !strings.HasSuffix(got, ansi.ResetHyperlink()) {
+		t.Fatalf("expected dangling hyperlink to be closed, got %q", got)
+	}
+	closed := open + ansi.ResetHyperlink()
+	if got := closeOpenHyperlinks(closed); got != closed {
+		t.Fatalf("already-closed hyperlink changed: %q", got)
+	}
+	if got := closeOpenHyperlinks("no links here"); got != "no links here" {
+		t.Fatalf("plain text changed: %q", got)
+	}
+}
+
+func TestRenderPreviewClosesTruncatedHyperlink(t *testing.T) {
+	body := "start [" + strings.Repeat("label ", 200) + "](https://charm.sh) end\n"
+	doc := &model.Document{Path: "a.md", Title: "Note", Body: body}
+	m := NewModelWithFilter([]Item{{Doc: doc}}, Config{Preview: true}, substringStub)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 40})
+	m = next.(Model)
+	p := m.renderPreviewPane()
+	if !strings.Contains(p, ansi.SetHyperlink("https://charm.sh")) {
+		t.Fatalf("expected opener retained across truncation, got:\n%q", p)
+	}
+	if got := closeOpenHyperlinks(p); got != p {
+		t.Fatalf("preview leaves a dangling hyperlink:\n%q", p)
 	}
 }
 
