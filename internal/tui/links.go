@@ -2,6 +2,7 @@ package tui
 
 import (
 	"net/url"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -135,13 +136,20 @@ func scanInline(line string, links *[]linkInfo) string {
 			}
 			out.WriteString(line[i : i+n])
 			i += n
-		case c == '[':
-			// Leave image syntax (![alt](src)) to the renderer.
-			if i > 0 && line[i-1] == '!' {
-				out.WriteByte(c)
-				i++
-				continue
+		case c == '!':
+			// Leave image syntax (![alt](src)) to the renderer by copying the
+			// whole construct; otherwise its destination would be rescanned and
+			// picked up as a bare URL.
+			if i+1 < len(line) && line[i+1] == '[' {
+				if _, _, end, ok := parseInlineLink(line, i+1); ok {
+					out.WriteString(line[i:end])
+					i = end
+					continue
+				}
 			}
+			out.WriteByte(c)
+			i++
+		case c == '[':
 			if label, dest, end, ok := parseInlineLink(line, i); ok {
 				writeLink(&out, links, dest, label)
 				i = end
@@ -234,9 +242,23 @@ closed:
 		k = k + 1 + close + 1
 	} else {
 		start := k
-		for k < len(s) && s[k] != ')' && s[k] != ' ' && s[k] != '\t' {
-			if s[k] == '\\' && k+1 < len(s) {
-				k++
+		depth := 0
+	scan:
+		for k < len(s) {
+			switch s[k] {
+			case '\\':
+				if k+1 < len(s) {
+					k++
+				}
+			case '(':
+				depth++
+			case ')':
+				if depth == 0 {
+					break scan
+				}
+				depth--
+			case ' ', '\t':
+				break scan
 			}
 			k++
 		}
@@ -436,6 +458,26 @@ func patchLinks(rendered string, links []linkInfo, hyperlinks bool) string {
 
 // isLinkMarker reports whether r is one of the link carrier runes.
 func isLinkMarker(r rune) bool { return r >= linkStartBase && r <= linkEndRune }
+
+// osc8HyperlinkRe matches an OSC 8 hyperlink sequence and captures its URI,
+// which is empty for a reset sequence.
+var osc8HyperlinkRe = regexp.MustCompile("\x1b]8;[^;]*;([^\x07\x1b]*)(?:\x07|\x1b\\\\)")
+
+// closeOpenHyperlinks appends an OSC 8 reset when s ends while a hyperlink is
+// still open. Truncating rendered preview text can drop the closing sequence
+// while keeping the opener; SGR resets do not close a hyperlink, so the status
+// bar and later output would otherwise inherit it.
+func closeOpenHyperlinks(s string) string {
+	matches := osc8HyperlinkRe.FindAllStringSubmatchIndex(s, -1)
+	if len(matches) == 0 {
+		return s
+	}
+	last := matches[len(matches)-1]
+	if last[2] != last[3] { // captured URI is non-empty: still open
+		return s + ansi.ResetHyperlink()
+	}
+	return s
+}
 
 // removeLinkMarkers drops any leftover carrier runes.
 func removeLinkMarkers(s string) string {

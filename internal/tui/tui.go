@@ -250,7 +250,7 @@ func (m Model) View() string {
 		}
 		out = clamp.Render(out)
 	}
-	return out
+	return closeOpenHyperlinks(out)
 }
 
 // --- accessors for tests / integration ---
@@ -687,10 +687,10 @@ func (m Model) renderPreviewPane() string {
 		// capped at the same row budget.
 		left := lipgloss.NewStyle().MaxWidth(listW).Render(m.renderList())
 		right := lipgloss.NewStyle().Width(prevW).MaxWidth(prevW).MaxHeight(m.visibleRows()).Render(limitLines(text, m.visibleRows()))
-		return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
+		return closeOpenHyperlinks(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right))
 	}
 	text := previewTextHighlighted(it.Doc, m.width, m.matchRe, m.hyperlinks)
-	return lipgloss.NewStyle().Render(limitLines(text, m.previewRows()))
+	return closeOpenHyperlinks(lipgloss.NewStyle().Render(limitLines(text, m.previewRows())))
 }
 
 func (m Model) renderStatus() string {
