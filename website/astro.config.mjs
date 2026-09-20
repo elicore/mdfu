@@ -78,6 +78,7 @@ export default defineConfig({
           items: [
             { label: 'Roadmap', slug: 'project/roadmap' },
             { label: 'History', slug: 'project/history' },
+            { label: 'Local CI', slug: 'project/local-ci' },
           ],
         },
       ],

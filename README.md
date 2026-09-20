@@ -63,9 +63,28 @@ go build ./... && go test ./...
 
 ### Local CI (run the GitHub Actions locally)
 
-The workflows under `.github/workflows/` can be run locally with
-[`act`](https://github.com/nektos/act). Docker is required; `act` is
-auto-installed on first use (Homebrew, then `go install`).
+Run the workflows under `.github/workflows/` on your machine with
+[`act`](https://github.com/nektos/act) — the same YAML CI runs, before you push.
+
+**What it gives us**
+
+- Reproduce CI failures locally (Docker required) instead of waiting on a
+  GitHub run, and debug them with full local control.
+- Exercise the *actual* workflow YAML against uncommitted changes, so a change
+  is validated before it ever reaches a PR.
+- Catch workflow/config breakage in the inner loop rather than on `main`.
+
+**Before**
+
+CI only ran on GitHub after a push or PR. There was no local way to run or debug
+a workflow, and because most workflows only fail against a *fresh* checkout,
+breakage could sit green in a PR and land on `main` — the docs build was in fact
+broken on `main` by the Astro 7 upgrade until this runner surfaced it.
+
+**Target state**
+
+Every workflow that can run on Linux is executable before push and stays green
+on `main`; changes touching code, docs, or CI are validated locally first.
 
 ```sh
 make act-list          # list workflows/jobs act can run
@@ -82,7 +101,8 @@ are tested as CI would see them.
 
 These workflows cannot run locally — they need GitHub-hosted backends or a
 macOS runner: `codeql.yml`, `pages.yml` (deploy job), `release-please.yml`,
-`brew.yml`, and `release.yml` (requires a real tag).
+`brew.yml`, and `release.yml` (requires a real tag). See the docs site's
+[Local CI](/mdfu/project/local-ci/) page for the full rationale.
 
 ## Docs
 
