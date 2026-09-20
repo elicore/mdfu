@@ -21,11 +21,12 @@ Type to narrow — bare words fuzzy, `key:value` hard-filters via the live `Filt
 | `esc` / `ctrl+c` | Abort (no output). |
 | `tab` | Toggle multi-select on cursor item (the checkbox column appears only once a selection exists). |
 | `ctrl+a` | Toggle archived visibility (default hidden). |
-| `ctrl+p` | Toggle preview pane (glamour-highlighted markdown preview of the first 30 body lines + Title/Path/Type/Tags/Status; side-by-side when ≥100 cols). |
+| `ctrl+p` | Toggle preview pane (glamour-highlighted markdown preview of the first 30 body lines + filename header, title, and frontmatter rows; side-by-side when ≥100 cols). |
+| `ctrl+f` | Toggle the frontmatter block in the preview (the labeled rows between the title and the body). The startup default comes from `show_frontmatter` in the [Configuration](/guide/configuration/) file. |
 | `ctrl+o` | Open the previewed document's first web link (its `Resource`, else the first link in the body) in the default browser. |
 | other | Edit query and refilter. |
 
-Status bar: `matched/total • archived:hidden|shown • tab:multi • enter:select`.
+Status bar: `matched/total • archived:hidden|shown • fm:shown|hidden • tab:multi • enter:select`. The `fm:` field reports the `ctrl+f` frontmatter toggle.
 
 ## Links
 
@@ -51,15 +52,16 @@ Headless `Model.View()` capture:
   Monthly Active Users [Metric]  testdata/okf-v02-metric.md
   Legacy Retention Claim [Claim]  testdata/okf-v01-legacy.md
   Generic Note  testdata/generic.md
-Preview
-Title: Ship mdfu MVP
+portent-task.md
+Ship mdfu MVP
 Path: testdata/portent-task.md
 Type: Task
-Tags: tolaria, launch, Project Atlas
+Tags: tolaria launch Project Atlas
 Status: draft
----
 Finish the parser track so the search track can rank fixtures.
-4/5 • archived:hidden • tab:multi • enter:select
+4/5 • archived:hidden • fm:shown • tab:multi • enter:select
 ```
+
+The preview stacks, top to bottom: the filename header (base name, own color), the document title (own color, no `Title:` label), the frontmatter rows as `key: value` with list values rendered as colored pills (here `Tags:`), and the rendered markdown body. JSON-object frontmatter values flatten inline under their parent key as `k1: v1, k2: v2`. The old `Preview` heading and `---` separator are gone; the full `Path:` row stays in the frontmatter block so the complete path remains visible and copyable.
 
 See also: [Query Syntax](/guide/query-syntax/) for what to type, and [CLI](/reference/cli/) for `--filter` non-interactive mode.

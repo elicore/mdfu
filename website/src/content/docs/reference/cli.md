@@ -5,7 +5,7 @@ description: Flags, output formats, exit codes, and testdata examples.
 
 ```sh
 mdfu [--root DIR] [--hidden] [--no-ignore] [--limit N] [--archived]
-       [--no-hyperlinks] [--filter QUERY] [--format paths|json|vimgrep] [--version]
+       [--no-hyperlinks] [--config PATH] [--filter QUERY] [--format paths|json|vimgrep] [--version]
 ```
 
 | Flag | Default | Meaning |
@@ -18,6 +18,7 @@ mdfu [--root DIR] [--hidden] [--no-ignore] [--limit N] [--archived]
 | `--format F` | `paths` | `paths` (one path/line, fzf-compatible), `json` (`[{path,score,title,type,snippet}]` indented), `vimgrep` (`path:1:1:title`). Unknown → exit `2`. |
 | `--archived` | off | Include archived docs (else `FilterArchived` hides them; they stay searchable). |
 | `--no-hyperlinks` | off | TUI only: render markdown links as `label url` instead of OSC 8 terminal hyperlinks (use on terminals without hyperlink support). See [TUI](/guide/tui/#links). |
+| `--config PATH` | `$XDG_CONFIG_HOME/mdfu/config.yaml` | TUI only: theme/config file; overrides `$MDFU_CONFIG` and the discovered XDG file. See [Configuration](/guide/configuration/). |
 | `--version` | — | Print version (`-ldflags "-X main.version=…"`) and exit. |
 
 Exit codes: `0` = ≥1 match, `1` = no match, `2` = usage error (e.g. bad `--format`).

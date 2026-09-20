@@ -63,6 +63,7 @@ export default defineConfig({
             { label: 'Search & Ranking', slug: 'guide/search-ranking' },
             { label: 'Scan', slug: 'guide/scan' },
             { label: 'TUI', slug: 'guide/tui' },
+            { label: 'Configuration', slug: 'guide/configuration' },
           ],
         },
         {
