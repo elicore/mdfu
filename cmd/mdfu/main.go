@@ -3,9 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/elicore/mdfu/internal/search"
+	"github.com/elicore/mdfu/internal/theme"
 	"github.com/elicore/mdfu/internal/tui"
 )
 
@@ -21,6 +23,7 @@ func main() {
 	format := flag.String("format", "paths", "output format: paths|json|vimgrep")
 	archived := flag.Bool("archived", false, "include archived documents")
 	noHyperlinks := flag.Bool("no-hyperlinks", false, "render markdown links as label and URL instead of OSC 8 terminal hyperlinks")
+	config := flag.String("config", "", "path to a TUI theme YAML (default: $XDG_CONFIG_HOME/mdfu/config.yaml)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -37,13 +40,26 @@ func main() {
 	if *filter != "" {
 		os.Exit(runFilter(*root, *hidden, !*noIgnore, *filter, *archived, *limit, *format))
 	}
-	os.Exit(runTUI(*root, *hidden, !*noIgnore, *archived, *limit, *noHyperlinks))
+	th, err := loadTheme(*config, os.Stderr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mdfu:", err)
+		os.Exit(2)
+	}
+	os.Exit(runTUI(*root, *hidden, !*noIgnore, *archived, *limit, *noHyperlinks, th))
+}
+
+func loadTheme(explicit string, warn io.Writer) (*theme.Theme, error) {
+	th, err := theme.Resolve(explicit, warn)
+	if err != nil {
+		return nil, err
+	}
+	return &th, nil
 }
 
 // runTUI loads all documents the same way as --filter mode, then launches
 // the interactive picker with a live re-parse/re-rank FilterFunc. Selected
 // paths are printed one per line on success.
-func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchived bool, limit int, noHyperlinks bool) int {
+func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchived bool, limit int, noHyperlinks bool, th *theme.Theme) int {
 	docs, err := loadDocuments(root, includeHidden, respectGitignore)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mdfu:", err)
@@ -62,6 +78,7 @@ func runTUI(root string, includeHidden bool, respectGitignore bool, includeArchi
 		ShowArchived: includeArchived,
 		Preview:      true,
 		NoHyperlinks: noHyperlinks,
+		Theme:        th,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mdfu:", err)
