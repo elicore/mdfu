@@ -268,7 +268,7 @@ func renderField(th theme.Theme, f fmField, re *regexp.Regexp) string {
 	case fmObject:
 		value = renderObject(th, f.obj)
 	}
-	return highlightRe(th.FrontmatterKey.Render(f.label+": ")+value, re)
+	return highlightRe(th.FrontmatterKey.Render(f.label+": ")+value, re, th.HighlightSGR)
 }
 
 // renderObject renders a flattened object value: a list-of-objects (every

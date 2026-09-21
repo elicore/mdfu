@@ -15,6 +15,7 @@ import (
 
 	"github.com/elicore/mdfu/internal/model"
 	"github.com/elicore/mdfu/internal/open"
+	"github.com/elicore/mdfu/internal/theme"
 )
 
 // Item is the TUI's view of a searchable document.
@@ -630,10 +631,11 @@ func (m Model) renderList() string {
 			}
 			snippet = bodySnippet(it.Doc.Body, m.matchRe, sw)
 		}
-		title = highlightRe(title, m.matchRe)
-		path = highlightRe(path, m.matchRe)
-		extra = highlightRe(extra, m.matchRe)
-		snippet = highlightRe(snippet, m.matchRe)
+		hlSGR := theme.Default().HighlightSGR
+		title = highlightRe(title, m.matchRe, hlSGR)
+		path = highlightRe(path, m.matchRe, hlSGR)
+		extra = highlightRe(extra, m.matchRe, hlSGR)
+		snippet = highlightRe(snippet, m.matchRe, hlSGR)
 		var line string
 		if multi {
 			line = fmt.Sprintf("%s%s %s%s", cursor, sel, title, extra)
@@ -733,42 +735,7 @@ func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp, h
 	if doc == nil {
 		return "(no preview)"
 	}
-	body, links := extractAndHide(matchWindow(doc.Body, re, 30), hyperlinks)
-	var b strings.Builder
-	b.WriteString(stylePreviewH.Render("Preview"))
-	b.WriteString("\n")
-	b.WriteString(styleTitle.Render("Title: ") + doc.Title + "\n")
-	b.WriteString("Path: " + doc.Path + "\n")
-	if doc.DocType != "" {
-		b.WriteString("Type: " + doc.DocType + "\n")
-	}
-	if doc.Description != "" {
-		b.WriteString("Description: " + doc.Description + "\n")
-	}
-	if len(doc.Tags) > 0 {
-		b.WriteString("Tags: " + strings.Join(doc.Tags, ", ") + "\n")
-	}
-	if doc.Status != "" {
-		b.WriteString("Status: " + doc.Status + "\n")
-	}
-	if doc.Resource != "" {
-		b.WriteString("Resource: ")
-		if hyperlinks && isWebLink(doc.Resource) && len(links) < linkEndRune-linkStartBase {
-			idx := len(links)
-			links = append(links, linkInfo{Label: doc.Resource, URL: doc.Resource})
-			b.WriteRune(rune(linkStartBase + idx))
-			b.WriteString(doc.Resource)
-			b.WriteRune(linkEndRune)
-		} else {
-			b.WriteString(doc.Resource)
-		}
-		b.WriteString("\n")
-	}
-	b.WriteString("---\n")
-	b.WriteString(renderMarkdown(body, width))
-	// Highlighting runs before hyperlink patching so the marker runes and the
-	// raw URLs are never treated as match candidates by highlightRe.
-	return patchLinks(highlightRe(b.String(), re), links, hyperlinks)
+	return NewPreview(doc, theme.Default(), PreviewOptions{Highlight: re, Hyperlinks: hyperlinks}).Render(width)
 }
 
 // Match highlighting. Matches are shown as black text on a bright-yellow
@@ -776,13 +743,14 @@ func previewTextHighlighted(doc *model.Document, width int, re *regexp.Regexp, h
 // (lipgloss/glamour output): escape sequences pass through untouched and the
 // active style is restored after each emphasized span.
 
-const (
-	hlStart = "\x1b[1;30;103m"
-	hlReset = "\x1b[0m"
+// hlStart is the default-theme match emphasis opener, derived from the
+// theme's default HighlightSGR so the default output keeps the exact bytes
+// of the old inline constant. hlReset ends an emphasized span; resetSGR
+// returns to the surrounding style when a hyperlink label ends.
+var hlStart = "\x1b[" + theme.Default().HighlightSGR + "m"
 
-	// linkSGR styles a hyperlink's label; resetSGR returns to the surrounding
-	// style when the label ends.
-	linkSGR  = "\x1b[1;4;38;5;212m"
+const (
+	hlReset  = "\x1b[0m"
 	resetSGR = "\x1b[0m"
 )
 
@@ -922,13 +890,14 @@ func termsRegexp(terms []string) *regexp.Regexp {
 // highlight emphasizes terms in s, compiling their match regexp on the fly.
 // Callers rendering many strings should prefer highlightRe with a cached regexp.
 func highlight(s string, terms []string) string {
-	return highlightRe(s, termsRegexp(terms))
+	return highlightRe(s, termsRegexp(terms), theme.Default().HighlightSGR)
 }
 
-// highlightRe emphasizes every occurrence matched by re in s. It is safe on
-// text containing ANSI SGR sequences: they are preserved and the style active
-// at the start of a span is re-applied after it ends.
-func highlightRe(s string, re *regexp.Regexp) string {
+// highlightRe emphasizes every occurrence matched by re in s, wrapping matches
+// in the SGR parameters hlSGR. It is safe on text containing ANSI SGR
+// sequences: they are preserved and the style active at the start of a span
+// is re-applied after it ends.
+func highlightRe(s string, re *regexp.Regexp, hlSGR string) string {
 	if re == nil || s == "" {
 		return s
 	}
@@ -948,7 +917,7 @@ func highlightRe(s string, re *regexp.Regexp) string {
 		if loc != nil {
 			end = i + loc[0]
 		}
-		writeHighlightedRun(&out, s[i:end], re, active.String())
+		writeHighlightedRun(&out, s[i:end], re, active.String(), hlSGR)
 		i = end
 	}
 	return out.String()
@@ -956,7 +925,7 @@ func highlightRe(s string, re *regexp.Regexp) string {
 
 // writeHighlightedRun wraps term matches inside a single unstyled run (a span
 // free of ANSI escapes) and restores active afterwards.
-func writeHighlightedRun(out *strings.Builder, run string, re *regexp.Regexp, active string) {
+func writeHighlightedRun(out *strings.Builder, run string, re *regexp.Regexp, active, hlSGR string) {
 	if run == "" {
 		return
 	}
@@ -965,10 +934,11 @@ func writeHighlightedRun(out *strings.Builder, run string, re *regexp.Regexp, ac
 		out.WriteString(run)
 		return
 	}
+	start := "\x1b[" + hlSGR + "m"
 	last := 0
 	for _, m := range idxs {
 		out.WriteString(run[last:m[0]])
-		out.WriteString(hlStart)
+		out.WriteString(start)
 		out.WriteString(run[m[0]:m[1]])
 		out.WriteString(hlReset)
 		out.WriteString(active)

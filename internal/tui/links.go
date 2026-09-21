@@ -74,9 +74,10 @@ func linkLabel(raw string) string {
 	return raw
 }
 
-// osc8Link renders label as a terminal hyperlink pointing at raw.
-func osc8Link(raw, label string) string {
-	return ansi.SetHyperlink(raw) + linkSGR + label + resetSGR + ansi.ResetHyperlink()
+// osc8Link renders label as a terminal hyperlink pointing at raw, styling the
+// label with the SGR parameters linkSGR.
+func osc8Link(raw, label, linkSGR string) string {
+	return ansi.SetHyperlink(raw) + "\x1b[" + linkSGR + "m" + label + resetSGR + ansi.ResetHyperlink()
 }
 
 // extractAndHide rewrites markdown links so the renderer shows only the label,
@@ -403,15 +404,17 @@ func isFenceClose(line string, c byte, n int) bool {
 }
 
 // patchLinks converts marker runes in rendered glamour output into OSC 8
-// hyperlinks, styling the enclosed label. Any marker that cannot be matched is
-// stripped so Private Use runes never leak into the preview.
-func patchLinks(rendered string, links []linkInfo, hyperlinks bool) string {
+// hyperlinks, styling the enclosed label with the SGR parameters linkSGR. Any
+// marker that cannot be matched is stripped so Private Use runes never leak
+// into the preview.
+func patchLinks(rendered string, links []linkInfo, hyperlinks bool, linkSGR string) string {
 	if len(links) == 0 {
 		return rendered
 	}
 	if !strings.ContainsFunc(rendered, isLinkMarker) {
 		return rendered
 	}
+	labelStart := "\x1b[" + linkSGR + "m"
 	var out strings.Builder
 	var active strings.Builder
 	var saved []string
@@ -432,7 +435,7 @@ func patchLinks(rendered string, links []linkInfo, hyperlinks bool) string {
 			if hyperlinks {
 				out.WriteString(ansi.SetHyperlink(links[idx].URL))
 			}
-			out.WriteString(linkSGR)
+			out.WriteString(labelStart)
 			i += size
 		case r == linkEndRune:
 			out.WriteString(resetSGR)
