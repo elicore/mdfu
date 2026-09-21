@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/elicore/mdfu/internal/model"
 	"github.com/elicore/mdfu/internal/theme"
 )
@@ -93,6 +95,148 @@ func TestPreviewEmptyDocument(t *testing.T) {
 	}
 	if got := previewTextHighlighted(nil, 80, nil, false); got != "(no preview)" {
 		t.Fatalf("nil document render = %q, want %q", got, "(no preview)")
+	}
+}
+
+// Given the OKF v0.2 metric fixture rendered through the component Preview
+// Then the frontmatter panel shows the normalized rows, JSON-object values
+// flattened inline, the sources object list joined by "; ", tags as pills,
+// and the retained full Path row — and sources never renders as pills.
+func TestPreviewFrontmatterPanel(t *testing.T) {
+	forceANSIColors(t)
+	doc := parseFixture(t, "../../testdata/okf-v02-metric.md")
+	th := theme.Default()
+	raw := NewPreview(doc, th, PreviewOptions{}).Render(80)
+	panel := stripANSI(raw)
+
+	for _, want := range []string{
+		"Type: Metric",
+		"generated: by: data-pipeline, at: 2024-06-01T10:00:00Z",
+		"verified: by: alice, at: 2024-06-02T12:30:00Z",
+	} {
+		if !strings.Contains(panel, want) {
+			t.Errorf("panel missing %q\n---\n%s", want, panel)
+		}
+	}
+
+	lines := strings.Split(panel, "\n")
+	rawLines := strings.Split(raw, "\n")
+	lineByPrefix := func(ls []string, prefix string) string {
+		for _, l := range ls {
+			if strings.Contains(l, prefix) {
+				return l
+			}
+		}
+		return ""
+	}
+
+	tagsLine := lineByPrefix(lines, "Tags:")
+	if tagsLine == "" {
+		t.Fatalf("no Tags row in panel\n---\n%s", panel)
+	}
+	for _, tag := range []string{"growth", "kpi", "monthly"} {
+		if !strings.Contains(tagsLine, tag) {
+			t.Errorf("Tags row missing %q: %q", tag, tagsLine)
+		}
+	}
+
+	sourcesLine := lineByPrefix(lines, "sources:")
+	if sourcesLine == "" {
+		t.Fatalf("no sources row in panel\n---\n%s", panel)
+	}
+	i1 := strings.Index(sourcesLine, "id: warehouse")
+	i2 := strings.Index(sourcesLine, "id: dashboard")
+	sep := strings.Index(sourcesLine, "; ")
+	if i1 < 0 || i2 < 0 {
+		t.Fatalf("sources row missing element ids: %q", sourcesLine)
+	}
+	if sep < i1 || sep > i2 {
+		t.Errorf("object list elements must be joined by \"; \" between the ids: %q", sourcesLine)
+	}
+
+	pathLine := lineByPrefix(lines, "Path:")
+	if !strings.HasPrefix(pathLine, "Path: ") || !strings.HasSuffix(pathLine, "testdata/okf-v02-metric.md") {
+		t.Errorf("retained Path row = %q, want the full fixture path", pathLine)
+	}
+
+	probe := th.Pill.Render("probe")
+	var seqs []string
+	for _, s := range ansiRe.FindAllString(probe, -1) {
+		if s != "\x1b[0m" {
+			seqs = append(seqs, s)
+		}
+	}
+	if len(seqs) == 0 {
+		t.Fatal("pill probe emitted no color SGR sequences; color profile was not forced")
+	}
+	sourcesRaw := lineByPrefix(rawLines, "sources:")
+	tagsRaw := lineByPrefix(rawLines, "Tags:")
+	for _, s := range seqs {
+		if strings.Contains(sourcesRaw, s) {
+			t.Errorf("sources row must not render as pills; found pill SGR %q in %q", s, sourcesRaw)
+		}
+		if !strings.Contains(tagsRaw, s) {
+			t.Errorf("sanity check: the Tags row of the same panel carries the pill SGR %q", s)
+		}
+	}
+}
+
+// Given the OKF v0.2 metric preview
+// When the frontmatter component is hidden
+// Then every labeled row, including the retained Path row, disappears while
+// the filename, title, and body remain.
+func TestPreviewFrontmatterPanelHidden(t *testing.T) {
+	doc := parseFixture(t, "../../testdata/okf-v02-metric.md")
+	p := NewPreview(doc, theme.Default(), PreviewOptions{})
+	p.SetVisible(ComponentFrontmatter, false)
+	panel := stripANSI(p.Render(80))
+
+	for _, gone := range []string{"Path:", "Type:", "Status:", "Description:", "Tags:", "Created:", "Updated:", "generated:", "sources:", "verified:"} {
+		if strings.Contains(panel, gone) {
+			t.Errorf("hidden frontmatter still renders the %q row:\n%s", gone, panel)
+		}
+	}
+	for _, want := range []string{"okf-v02-metric.md", "Monthly Active Users", "MAU grew 12%"} {
+		if !strings.Contains(panel, want) {
+			t.Errorf("preview without frontmatter missing %q\n---\n%s", want, panel)
+		}
+	}
+}
+
+// Given a document whose Resource is a web link
+// When the preview renders with hyperlinks on and a query matching the URL
+// Then the frontmatter panel emits no link marker runes, the Resource row is
+// a clean OSC 8 hyperlink (the query highlight must not corrupt the link
+// target), and with hyperlinks off no OSC 8 sequence appears at all.
+func TestPreviewFrontmatterPanelHyperlinks(t *testing.T) {
+	doc := &model.Document{
+		Path:     "notes/a.md",
+		Title:    "Note",
+		Resource: "https://example.com/r",
+		Body:     "Body without links.\n",
+	}
+	re := termsRegexp([]string{"example"})
+
+	out := NewPreview(doc, theme.Default(), PreviewOptions{Highlight: re, Hyperlinks: true}).Render(80)
+	for _, r := range out {
+		if r >= linkStartBase && r <= linkEndRune {
+			t.Fatalf("frontmatter preview emitted link marker rune U+%04X:\n%q", r, out)
+		}
+	}
+	if !strings.Contains(out, ansi.SetHyperlink("https://example.com/r")) {
+		t.Fatalf("Resource hyperlink target corrupted by query highlighting, got:\n%q", out)
+	}
+	visible := stripANSI(stripOSC8(out))
+	if !strings.Contains(visible, "Resource: https://example.com/r") {
+		t.Fatalf("expected the visible Resource row, got:\n%q", visible)
+	}
+
+	plain := NewPreview(doc, theme.Default(), PreviewOptions{Hyperlinks: false}).Render(80)
+	if strings.Contains(plain, "\x1b]8;;") {
+		t.Fatalf("hyperlinks off must emit no OSC 8 sequence, got:\n%q", plain)
+	}
+	if !strings.Contains(stripANSI(plain), "Resource: https://example.com/r") {
+		t.Fatalf("hyperlinks off must keep the Resource target visible, got:\n%q", plain)
 	}
 }
 

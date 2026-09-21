@@ -757,6 +757,11 @@ const (
 // ansiSGRRe matches CSI Select-Graphic-Rendition sequences.
 var ansiSGRRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
+// ansiOSCRe matches OSC sequences (e.g. OSC 8 hyperlinks) terminated by BEL
+// or ST. Their payload bytes are escape data, not visible text, so
+// highlighting must never match inside them.
+var ansiOSCRe = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
 // queryTerms extracts the literal substrings worth emphasizing from a raw
 // query. It is deliberately syntax-light: bare words and key:value values are
 // kept, while date expressions and negated tags are skipped.
@@ -896,7 +901,8 @@ func highlight(s string, terms []string) string {
 // highlightRe emphasizes every occurrence matched by re in s, wrapping matches
 // in the SGR parameters hlSGR. It is safe on text containing ANSI SGR
 // sequences: they are preserved and the style active at the start of a span
-// is re-applied after it ends.
+// is re-applied after it ends. OSC sequences (hyperlinks) pass through
+// untouched so a match never corrupts their payload.
 func highlightRe(s string, re *regexp.Regexp, hlSGR string) string {
 	if re == nil || s == "" {
 		return s
@@ -905,6 +911,11 @@ func highlightRe(s string, re *regexp.Regexp, hlSGR string) string {
 	var active strings.Builder
 	i := 0
 	for i < len(s) {
+		if loc := ansiOSCRe.FindStringIndex(s[i:]); loc != nil && loc[0] == 0 {
+			out.WriteString(s[i : i+loc[1]])
+			i += loc[1]
+			continue
+		}
 		loc := ansiSGRRe.FindStringIndex(s[i:])
 		if loc != nil && loc[0] == 0 {
 			seq := s[i : i+loc[1]]
@@ -916,6 +927,9 @@ func highlightRe(s string, re *regexp.Regexp, hlSGR string) string {
 		end := len(s)
 		if loc != nil {
 			end = i + loc[0]
+		}
+		if osc := ansiOSCRe.FindStringIndex(s[i:end]); osc != nil {
+			end = i + osc[0]
 		}
 		writeHighlightedRun(&out, s[i:end], re, active.String(), hlSGR)
 		i = end
