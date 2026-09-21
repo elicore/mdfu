@@ -1006,36 +1006,24 @@ func updateActiveSGR(active *strings.Builder, seq string) {
 	active.WriteString(seq)
 }
 
-// previewRenderers caches one glamour renderer per word-wrap width; building a
-// renderer is far more expensive than rendering a 30-line excerpt, and the pane
-// width is stable while browsing.
-var (
-	previewRenderers = map[int]*glamour.TermRenderer{}
-	previewRenderMu  sync.Mutex
-	// markdownStyle is the glamour standard style ("dark" or "light"). It is
-	// resolved once before the BubbleTea program starts so View never probes
-	// the terminal (which would race with BubbleTea's input reader). Empty
-	// falls back to "dark", which keeps headless rendering deterministic.
-	markdownStyle string
-)
-
-// SetMarkdownStyle records the terminal background style used for markdown
-// previews and drops any cached renderers. Call it before Run for light
-// terminals; the default is dark.
-func SetMarkdownStyle(style string) {
-	previewRenderMu.Lock()
-	if style != "light" {
-		style = "dark"
-	}
-	markdownStyle = style
-	previewRenderers = map[int]*glamour.TermRenderer{}
-	previewRenderMu.Unlock()
+type previewRendererKey struct {
+	style string
+	wrap  int
 }
 
+// previewRenderers caches one glamour renderer per (style, word-wrap width)
+// pair; building a renderer is far more expensive than rendering a 30-line
+// excerpt, and the pane width and style are stable while browsing.
+var (
+	previewRenderers = map[previewRendererKey]*glamour.TermRenderer{}
+	previewRenderMu  sync.Mutex
+)
+
 // renderMarkdown converts a markdown excerpt to ANSI-highlighted text wrapped
-// to width. On any error it falls back to the raw source so previews never
-// disappear.
-func renderMarkdown(src string, width int) string {
+// to width using the glamour standard style ("dark" or "light"); an empty
+// style falls back to "dark" so headless rendering stays deterministic. On
+// any error it falls back to the raw source so previews never disappear.
+func renderMarkdown(src string, width int, style string) string {
 	if width < 20 {
 		width = 20
 	}
@@ -1046,13 +1034,13 @@ func renderMarkdown(src string, width int) string {
 	if wrap < 10 {
 		wrap = 10
 	}
+	if style == "" {
+		style = "dark"
+	}
+	key := previewRendererKey{style: style, wrap: wrap}
 	previewRenderMu.Lock()
-	r := previewRenderers[wrap]
+	r := previewRenderers[key]
 	if r == nil {
-		style := markdownStyle
-		if style == "" {
-			style = "dark"
-		}
 		nr, err := glamour.NewTermRenderer(
 			glamour.WithStandardStyle(style),
 			glamour.WithWordWrap(wrap),
@@ -1063,7 +1051,7 @@ func renderMarkdown(src string, width int) string {
 			return src
 		}
 		r = nr
-		previewRenderers[wrap] = r
+		previewRenderers[key] = r
 	}
 	previewRenderMu.Unlock()
 
@@ -1200,13 +1188,20 @@ func RunWithFilter(items []Item, cfg Config, f FilterFunc) ([]Item, error) {
 	if f == nil {
 		f = globalFilter
 	}
-	// Resolve the markdown preview theme while the terminal is still in cooked
+	// Resolve the markdown preview style while the terminal is still in cooked
 	// mode; probing from inside View would race BubbleTea's input reader.
-	if lipgloss.HasDarkBackground() {
-		SetMarkdownStyle("dark")
-	} else {
-		SetMarkdownStyle("light")
+	th := theme.Default()
+	if cfg.Theme != nil {
+		th = *cfg.Theme
 	}
+	if th.MarkdownStyle == "" {
+		if lipgloss.HasDarkBackground() {
+			th.MarkdownStyle = "dark"
+		} else {
+			th.MarkdownStyle = "light"
+		}
+	}
+	cfg.Theme = &th
 	m := NewModelWithFilter(items, cfg, f)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := p.Run()

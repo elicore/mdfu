@@ -377,6 +377,41 @@ func TestPreviewRendersHighlightedMarkdown(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownStyleCache(t *testing.T) {
+	const (
+		src   = "# Heading\n\nSome **bold** text.\n"
+		width = 61
+		wrap  = width - 2
+	)
+	// Given: no renderer cached for this width yet
+	// When: the same width is rendered under "dark" then "light"
+	dark := renderMarkdown(src, width, "dark")
+	light := renderMarkdown(src, width, "light")
+	// Then: each style gets its own cached renderer, not the dark one reused
+	if dark == light {
+		t.Fatal("expected dark and light renders at the same width to differ")
+	}
+	previewRenderMu.Lock()
+	darkCached := previewRenderers[previewRendererKey{style: "dark", wrap: wrap}] != nil
+	lightCached := previewRenderers[previewRendererKey{style: "light", wrap: wrap}] != nil
+	cached := len(previewRenderers)
+	previewRenderMu.Unlock()
+	if !darkCached || !lightCached {
+		t.Fatalf("expected cached renderers for both styles (dark: %v, light: %v)", darkCached, lightCached)
+	}
+	// When: the same style and width are rendered again
+	// Then: the cached renderer serves it — no new cache entry, identical output
+	if again := renderMarkdown(src, width, "dark"); again != dark {
+		t.Fatal("expected a repeated dark render to return the cached output")
+	}
+	previewRenderMu.Lock()
+	grew := len(previewRenderers) != cached
+	previewRenderMu.Unlock()
+	if grew {
+		t.Fatal("expected a repeated same-style render to be served from cache")
+	}
+}
+
 func TestQueryTerms(t *testing.T) {
 	got := queryTerms(`tag:launch,beta "ship mdfu" created:2024 bare tag:-skip`)
 	want := map[string]bool{

@@ -182,6 +182,6 @@ func (c *bodyPanel) ID() string { return ComponentBody }
 
 func (c *bodyPanel) Render(width int) string {
 	body, links := extractAndHide(matchWindow(c.doc.Body, c.opts.Highlight, c.th.BodyLines), c.opts.Hyperlinks)
-	rendered := renderMarkdown(body, width)
+	rendered := renderMarkdown(body, width, c.th.MarkdownStyle)
 	return patchLinks(highlightRe(rendered, c.opts.Highlight, c.th.HighlightSGR), links, c.opts.Hyperlinks, c.th.LinkSGR)
 }
