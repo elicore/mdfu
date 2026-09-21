@@ -273,6 +273,43 @@ func TestPreviewToggle(t *testing.T) {
 	}
 }
 
+func TestFrontmatterToggle(t *testing.T) {
+	it := Item{Doc: &model.Document{
+		Path:    "a.md",
+		Title:   "alpha",
+		DocType: "Note",
+		Tags:    []string{"foo", "bar"},
+		Body:    "body of alpha",
+	}}
+	m := NewModelWithFilter([]Item{it}, Config{Preview: true}, substringStub)
+	if !m.ShowFrontmatter() {
+		t.Fatal("expected frontmatter shown by default")
+	}
+	v := stripANSI(stripOSC8(m.View()))
+	if !strings.Contains(v, "Type:") || !strings.Contains(v, "Tags:") {
+		t.Fatalf("expected frontmatter rows in view, got:\n%s", v)
+	}
+	m = applyKey(m, tea.KeyMsg{Type: tea.KeyCtrlF})
+	if m.ShowFrontmatter() {
+		t.Fatal("expected frontmatter hidden after ctrl+f")
+	}
+	v = stripANSI(stripOSC8(m.View()))
+	if strings.Contains(v, "Type:") || strings.Contains(v, "Tags:") {
+		t.Fatalf("expected frontmatter rows gone after ctrl+f, got:\n%s", v)
+	}
+	if !strings.Contains(v, "fm:hidden") {
+		t.Fatalf("expected fm:hidden in status, got:\n%s", v)
+	}
+	m = applyKey(m, tea.KeyMsg{Type: tea.KeyCtrlF})
+	if !m.ShowFrontmatter() {
+		t.Fatal("expected frontmatter shown after second ctrl+f")
+	}
+	v = stripANSI(stripOSC8(m.View()))
+	if !strings.Contains(v, "Type:") || !strings.Contains(v, "Tags:") {
+		t.Fatalf("expected frontmatter rows restored, got:\n%s", v)
+	}
+}
+
 func TestStatusBarAndView(t *testing.T) {
 	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
 	m := NewModelWithFilter(items, Config{}, substringStub)
@@ -282,6 +319,9 @@ func TestStatusBarAndView(t *testing.T) {
 	}
 	if !strings.Contains(v, "archived:hidden") {
 		t.Fatalf("expected archived:hidden in view, got:\n%s", v)
+	}
+	if !strings.Contains(v, "fm:shown") {
+		t.Fatalf("expected fm:shown in view, got:\n%s", v)
 	}
 	if !strings.Contains(v, "tab:multi") || !strings.Contains(v, "enter:select") {
 		t.Fatalf("expected key hints in view, got:\n%s", v)

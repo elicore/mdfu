@@ -41,6 +41,11 @@ type Config struct {
 	// markdown links fall back to the renderer's "label url" output so the
 	// target stays visible and copyable on terminals without hyperlink support.
 	NoHyperlinks bool
+	// Theme overrides the builtin theme; nil resolves to theme.Default().
+	Theme *theme.Theme
+	// ShowFrontmatter overrides the theme's frontmatter panel default; nil
+	// keeps the theme value.
+	ShowFrontmatter *bool
 }
 
 // globalFilter allows integration code to wire the real search filter
@@ -81,6 +86,10 @@ type Model struct {
 	// case-insensitive alternation (nil when there is nothing to highlight).
 	terms   []string
 	matchRe *regexp.Regexp
+	// theme is the resolved style set; showFM is the frontmatter panel's
+	// current visibility (toggled with ctrl+f, never persisted).
+	theme  theme.Theme
+	showFM bool
 }
 
 // NewModel builds a Model with default (substring) filtering.
@@ -104,6 +113,14 @@ func NewModelWithFilter(items []Item, cfg Config, f FilterFunc) Model {
 	if f == nil {
 		f = defaultFilter
 	}
+	th := theme.Default()
+	if cfg.Theme != nil {
+		th = *cfg.Theme
+	}
+	showFM := th.ShowFrontmatter
+	if cfg.ShowFrontmatter != nil {
+		showFM = *cfg.ShowFrontmatter
+	}
 	cp := make([]Item, len(items))
 	copy(cp, items)
 	m := Model{
@@ -115,6 +132,8 @@ func NewModelWithFilter(items []Item, cfg Config, f FilterFunc) Model {
 		showArch:   cfg.ShowArchived,
 		limit:      cfg.Limit,
 		hyperlinks: !cfg.NoHyperlinks,
+		theme:      th,
+		showFM:     showFM,
 	}
 	m.refilter()
 	return m
@@ -128,7 +147,8 @@ func (m Model) Init() tea.Cmd {
 // Update implements tea.Model. Keybindings:
 // up/down or ctrl-k/ctrl-j navigate, enter confirm, esc/ctrl-c abort,
 // tab toggle multi-select, ctrl-a toggle archived, ctrl-p toggle preview,
-// ctrl-o open the previewed document's first web link.
+// ctrl-f toggle the frontmatter panel, ctrl-o open the previewed document's
+// first web link.
 // All other keys go to the text input and trigger a refilter on change.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -190,6 +210,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "ctrl+p":
 			m.showPrev = !m.showPrev
+			return m, nil
+		case "ctrl+f":
+			m.showFM = !m.showFM
 			return m, nil
 		case "ctrl+o":
 			if m.cursor >= 0 && m.cursor < len(m.filtered) {
@@ -319,6 +342,9 @@ func (m *Model) ShowArchived() bool { return m.showArch }
 
 // ShowPreview reports preview visibility.
 func (m *Model) ShowPreview() bool { return m.showPrev }
+
+// ShowFrontmatter reports frontmatter panel visibility.
+func (m *Model) ShowFrontmatter() bool { return m.showFM }
 
 // --- internal filtering ---
 
@@ -540,18 +566,9 @@ func itemBlob(it Item) string {
 
 // --- rendering ---
 
-var (
-	styleCursor   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	styleSelected = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("82"))
-	styleDim      = lipgloss.NewStyle().Faint(true)
-	styleTitle    = lipgloss.NewStyle().Bold(true)
-	styleStatus   = lipgloss.NewStyle().Faint(true)
-	stylePreviewH = lipgloss.NewStyle().Bold(true).Underline(true)
-)
-
 func (m Model) renderList() string {
 	if len(m.filtered) == 0 {
-		return styleDim.Render("(no matches)")
+		return m.theme.Dim.Render("(no matches)")
 	}
 	maxRows := m.visibleRows()
 	if maxRows < 1 {
@@ -580,14 +597,14 @@ func (m Model) renderList() string {
 		it := m.filtered[i]
 		cursor := "  "
 		if i == m.cursor {
-			cursor = styleCursor.Render("> ")
+			cursor = m.theme.Cursor.Render("> ")
 		}
 		// The per-row checkbox column is only meaningful (and shown) once
 		// multi-select is in use; until then it is visual noise.
 		var sel string
 		if multi {
 			if m.selected[itemKey(it)] {
-				sel = styleSelected.Render("[x]")
+				sel = m.theme.Selected.Render("[x]")
 			} else {
 				sel = "[ ]"
 			}
@@ -631,7 +648,7 @@ func (m Model) renderList() string {
 			}
 			snippet = bodySnippet(it.Doc.Body, m.matchRe, sw)
 		}
-		hlSGR := theme.Default().HighlightSGR
+		hlSGR := m.theme.HighlightSGR
 		title = highlightRe(title, m.matchRe, hlSGR)
 		path = highlightRe(path, m.matchRe, hlSGR)
 		extra = highlightRe(extra, m.matchRe, hlSGR)
@@ -649,30 +666,32 @@ func (m Model) renderList() string {
 			showPath = false
 		}
 		if i == m.cursor {
-			line = styleCursor.Render(line)
+			line = m.theme.Cursor.Render(line)
 		}
 		b.WriteString(line)
 		if showPath {
-			b.WriteString("  " + styleDim.Render(path))
+			b.WriteString("  " + m.theme.Dim.Render(path))
 		}
 		if i < end-1 {
 			b.WriteString("\n")
 		}
 	}
 	if end < len(m.filtered) {
-		b.WriteString("\n" + styleDim.Render(fmt.Sprintf("... %d more", len(m.filtered)-end)))
+		b.WriteString("\n" + m.theme.Dim.Render(fmt.Sprintf("... %d more", len(m.filtered)-end)))
 	}
 	return b.String()
 }
 
 func (m Model) renderPreviewPane() string {
 	if len(m.filtered) == 0 || m.cursor < 0 || m.cursor >= len(m.filtered) {
-		return styleDim.Render("(no preview)")
+		return m.theme.Dim.Render("(no preview)")
 	}
 	it := m.filtered[m.cursor]
 	if it.Doc == nil {
-		return styleDim.Render("(no preview)")
+		return m.theme.Dim.Render("(no preview)")
 	}
+	p := NewPreview(it.Doc, m.theme, PreviewOptions{Highlight: m.matchRe, Hyperlinks: m.hyperlinks})
+	p.SetVisible(ComponentFrontmatter, m.showFM)
 	// Side-by-side when wide enough, stacked otherwise.
 	if m.width >= 100 {
 		listW := m.width/2 - 2
@@ -683,7 +702,7 @@ func (m Model) renderPreviewPane() string {
 		if prevW < 20 {
 			prevW = 20
 		}
-		text := previewTextHighlighted(it.Doc, prevW, m.matchRe, m.hyperlinks)
+		text := p.Render(prevW)
 		// MaxWidth (not Width) truncates the list lines so they cannot wrap
 		// and inflate the pane height. The preview is allowed to wrap, but is
 		// capped at the same row budget.
@@ -691,7 +710,7 @@ func (m Model) renderPreviewPane() string {
 		right := lipgloss.NewStyle().Width(prevW).MaxWidth(prevW).MaxHeight(m.visibleRows()).Render(limitLines(text, m.visibleRows()))
 		return closeOpenHyperlinks(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right))
 	}
-	text := previewTextHighlighted(it.Doc, m.width, m.matchRe, m.hyperlinks)
+	text := p.Render(m.width)
 	return closeOpenHyperlinks(lipgloss.NewStyle().Render(limitLines(text, m.previewRows())))
 }
 
@@ -700,8 +719,12 @@ func (m Model) renderStatus() string {
 	if m.showArch {
 		arch = "shown"
 	}
-	s := fmt.Sprintf("%d/%d • archived:%s • tab:multi • enter:select", len(m.filtered), len(m.items), arch)
-	return styleStatus.Render(s)
+	fm := "hidden"
+	if m.showFM {
+		fm = "shown"
+	}
+	s := fmt.Sprintf("%d/%d • archived:%s • fm:%s • tab:multi • enter:select", len(m.filtered), len(m.items), arch, fm)
+	return m.theme.Dim.Render(s)
 }
 
 // PreviewText renders the default-width preview: frontmatter fields plus a
