@@ -99,6 +99,55 @@ func Default() Theme {
 	}
 }
 
+// DefaultYAML returns the builtin defaults as a commented YAML document. It
+// backs `mdfu --config default`: printing it lets a user see every supported
+// key and copy the result to their config path as a starting point. Keys whose
+// builtin default is "unset" (preview_header_color) are emitted commented out.
+func DefaultYAML() string {
+	return defaultYAML
+}
+
+const defaultYAML = `# mdfu configuration — builtin defaults.
+#
+# Copy this file to $XDG_CONFIG_HOME/mdfu/config.yaml (or pass it via --config
+# / $MDFU_CONFIG) and edit. Every key is optional: omitted keys keep the
+# builtin defaults shown here. Unknown keys are ignored, invalid enum values
+# keep the default, and numeric values are clamped to their supported range.
+
+# Glamour style for the preview body: dark | light (empty = auto).
+markdown_style: ""
+# Frontmatter block visible at startup (ctrl+f toggles it live).
+show_frontmatter: true
+# Body lines shown in the preview (1..200).
+body_lines: 30
+# Cursor row in the result list (bold).
+cursor_color: "212"
+# Multi-selected rows in the result list (bold).
+selected_color: "82"
+# Document title in the preview (bold).
+title_color: "212"
+# Filename header at the top of the preview.
+filename_color: "244"
+# Preview header style. Unset means bold + underline; setting a color adds it.
+# preview_header_color: "212"
+# Labels of the frontmatter rows.
+frontmatter_key_color: "245"
+# Faint rendering for dimmed text such as status hints.
+dim_faint: true
+# Tag/list pill text.
+pill_foreground: "231"
+# Tag/list pill background.
+pill_background: "62"
+# Pill border shape: none | round.
+pill_shape: round
+# Horizontal padding inside pills (0..2).
+pill_padding: 1
+# Query-match emphasis (bold, black on bright yellow).
+highlight_sgr: "1;30;103"
+# Hyperlink labels in the preview.
+link_sgr: "1;4;38;5;212"
+`
+
 // LoadFile reads the YAML theme at path and merges it per key over Default.
 // Unknown keys are ignored; invalid enum values keep the builtin default and
 // numeric settings are clamped into their supported ranges.

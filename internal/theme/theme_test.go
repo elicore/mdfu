@@ -2,12 +2,14 @@ package theme
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"gopkg.in/yaml.v3"
 )
 
 func writeConfig(t *testing.T, dir, content string) string {
@@ -77,6 +79,56 @@ func TestDefault(t *testing.T) {
 			t.Errorf("%s = %v, want %v", sc.name, sc.got, sc.want)
 		}
 	}
+}
+
+func TestDefaultYAMLReproducesDefaults(t *testing.T) {
+	var fc fileConfig
+	if err := yaml.Unmarshal([]byte(DefaultYAML()), &fc); err != nil {
+		t.Fatalf("DefaultYAML() is not valid YAML: %v", err)
+	}
+	got, want := fc.apply(Default()), Default()
+
+	styles := []struct {
+		name      string
+		got, want lipgloss.Style
+	}{
+		{"Cursor", got.Cursor, want.Cursor},
+		{"Selected", got.Selected, want.Selected},
+		{"Dim", got.Dim, want.Dim},
+		{"Title", got.Title, want.Title},
+		{"Filename", got.Filename, want.Filename},
+		{"PreviewHeader", got.PreviewHeader, want.PreviewHeader},
+		{"FrontmatterKey", got.FrontmatterKey, want.FrontmatterKey},
+		{"Pill", got.Pill, want.Pill},
+	}
+	for _, s := range styles {
+		if gotFP, wantFP := styleFingerprint(s.got), styleFingerprint(s.want); gotFP != wantFP {
+			t.Errorf("%s: DefaultYAML applied = %s, want %s", s.name, gotFP, wantFP)
+		}
+	}
+
+	scalars := []struct {
+		name string
+		got  any
+		want any
+	}{
+		{"PillShape", got.PillShape, want.PillShape},
+		{"MarkdownStyle", got.MarkdownStyle, want.MarkdownStyle},
+		{"ShowFrontmatter", got.ShowFrontmatter, want.ShowFrontmatter},
+		{"BodyLines", got.BodyLines, want.BodyLines},
+		{"HighlightSGR", got.HighlightSGR, want.HighlightSGR},
+		{"LinkSGR", got.LinkSGR, want.LinkSGR},
+	}
+	for _, s := range scalars {
+		if s.got != s.want {
+			t.Errorf("%s = %v, want %v", s.name, s.got, s.want)
+		}
+	}
+}
+
+func styleFingerprint(s lipgloss.Style) string {
+	return fmt.Sprintf("fg=%v bg=%v bold=%t faint=%t underline=%t pad=%d",
+		s.GetForeground(), s.GetBackground(), s.GetBold(), s.GetFaint(), s.GetUnderline(), s.GetPaddingRight())
 }
 
 func TestLoadFile(t *testing.T) {
