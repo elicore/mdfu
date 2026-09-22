@@ -2,11 +2,16 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -86,10 +91,19 @@ type Model struct {
 	// case-insensitive alternation (nil when there is nothing to highlight).
 	terms   []string
 	matchRe *regexp.Regexp
+	// snippets caches body-only match excerpts for the current query so a
+	// frame does not re-scan multi-megabyte bodies; it is rebuilt on refilter.
+	snippets map[snippetKey]string
 	// theme is the resolved style set; showFM is the frontmatter panel's
 	// current visibility (toggled with ctrl+f, never persisted).
 	theme  theme.Theme
 	showFM bool
+}
+
+// snippetKey identifies a cached body snippet by document and row width.
+type snippetKey struct {
+	doc   *model.Document
+	width int
 }
 
 // NewModel builds a Model with default (substring) filtering.
@@ -360,6 +374,7 @@ func (m *Model) refilter() {
 	query := m.input.Value()
 	m.terms = queryTerms(query)
 	m.matchRe = termsRegexp(m.terms)
+	m.snippets = make(map[snippetKey]string)
 	var base []Item
 	if m.filter != nil {
 		base = m.filter(query, m.items)
@@ -646,7 +661,7 @@ func (m Model) renderList() string {
 			if sw > 80 {
 				sw = 80
 			}
-			snippet = bodySnippet(it.Doc.Body, m.matchRe, sw)
+			snippet = m.snippetFor(it.Doc, sw)
 		}
 		hlSGR := m.theme.HighlightSGR
 		title = highlightRe(title, m.matchRe, hlSGR)
@@ -934,10 +949,15 @@ func highlightRe(s string, re *regexp.Regexp, hlSGR string) string {
 	var active strings.Builder
 	i := 0
 	for i < len(s) {
-		if loc := ansiOSCRe.FindStringIndex(s[i:]); loc != nil && loc[0] == 0 {
-			out.WriteString(s[i : i+loc[1]])
-			i += loc[1]
-			continue
+		// Only an ESC "]" pair can begin an OSC; probing the OSC regexp on
+		// every other position would rescan the whole remaining string and
+		// make highlighting quadratic on SGR-dense renderer output.
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == ']' {
+			if loc := ansiOSCRe.FindStringIndex(s[i:]); loc != nil && loc[0] == 0 {
+				out.WriteString(s[i : i+loc[1]])
+				i += loc[1]
+				continue
+			}
 		}
 		loc := ansiSGRRe.FindStringIndex(s[i:])
 		if loc != nil && loc[0] == 0 {
@@ -1019,6 +1039,37 @@ var (
 	previewRenderMu  sync.Mutex
 )
 
+// maxTokenRunes bounds the longest whitespace-free run handed to the markdown
+// renderer. reflow's word wrapper re-measures the whole current word on every
+// character, so one very long token (common in imported notes) makes wrapping
+// quadratic; the preview never shows more than a screen line of a token.
+const maxTokenRunes = 128
+
+// breakLongTokens inserts line breaks into whitespace-free runs longer than
+// maxTokenRunes so downstream word wrapping stays linear.
+func breakLongTokens(src string, maxTokenRunes int) string {
+	if len(src) <= maxTokenRunes {
+		return src
+	}
+	var b strings.Builder
+	b.Grow(len(src) + len(src)/maxTokenRunes)
+	run := 0
+	for _, r := range src {
+		if unicode.IsSpace(r) {
+			run = 0
+			b.WriteRune(r)
+			continue
+		}
+		if run >= maxTokenRunes {
+			b.WriteByte('\n')
+			run = 0
+		}
+		b.WriteRune(r)
+		run++
+	}
+	return b.String()
+}
+
 // renderMarkdown converts a markdown excerpt to ANSI-highlighted text wrapped
 // to width using the glamour standard style ("dark" or "light"); an empty
 // style falls back to "dark" so headless rendering stays deterministic. On
@@ -1027,6 +1078,7 @@ func renderMarkdown(src string, width int, style string) string {
 	if width < 20 {
 		width = 20
 	}
+	src = breakLongTokens(src, maxTokenRunes)
 	// glamour's default document style indents each line by two columns
 	// outside the word-wrap budget; subtract it so the rendered pane never
 	// exceeds the width the caller allocated.
@@ -1078,6 +1130,47 @@ func BodyExcerpt(body string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// maxPreviewBodyBytes bounds the body source handed to the markdown renderer.
+// The preview shows only a couple dozen lines, but imported notes can hold a
+// multi-megabyte body whose "lines" are entire documents, so a line-based
+// excerpt alone still lets goldmark and wordwrap chew through megabytes per
+// frame and stalls the TUI.
+const maxPreviewBodyBytes = 8 * 1024
+
+// bodyWindow returns body unchanged when it already fits the preview budget;
+// otherwise it returns a rune-aligned slice centered on the first match of re
+// (or the body head when there is no match).
+func bodyWindow(body string, re *regexp.Regexp) string {
+	if len(body) <= maxPreviewBodyBytes {
+		return body
+	}
+	center := 0
+	if re != nil {
+		if loc := re.FindStringIndex(body); loc != nil {
+			center = loc[0]
+		}
+	}
+	start := center - maxPreviewBodyBytes/4
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxPreviewBodyBytes
+	if end > len(body) {
+		end = len(body)
+		start = end - maxPreviewBodyBytes
+		if start < 0 {
+			start = 0
+		}
+	}
+	for start > 0 && !utf8.RuneStart(body[start]) {
+		start--
+	}
+	for end < len(body) && !utf8.RuneStart(body[end]) {
+		end++
+	}
+	return body[start:end]
+}
+
 // matchWindow returns an excerpt of at most n body lines that contains the
 // first match of re, so the preview emphasizes a hit even when it lives well
 // past the leading lines. Without a match (or a nil re) it degenerates to the
@@ -1087,6 +1180,7 @@ func matchWindow(body string, re *regexp.Regexp, n int) string {
 		return ""
 	}
 	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = bodyWindow(body, re)
 	lines := strings.Split(body, "\n")
 	if re == nil || len(lines) <= n {
 		return BodyExcerpt(body, n)
@@ -1124,11 +1218,33 @@ func bodySnippet(body string, re *regexp.Regexp, width int) string {
 	if re == nil || width <= 0 {
 		return ""
 	}
-	s := strings.Join(strings.Fields(body), " ")
+	loc := re.FindStringIndex(body)
+	if loc == nil {
+		return ""
+	}
+	// Bound the text before collapsing whitespace: imported bodies can be
+	// megabytes while the snippet only needs a couple of rows around the hit,
+	// and collapsing the whole body on every frame stalls the list render.
+	reach := width * 4
+	from := loc[0] - reach
+	if from < 0 {
+		from = 0
+	}
+	to := loc[1] + reach
+	if to > len(body) {
+		to = len(body)
+	}
+	for from > 0 && !utf8.RuneStart(body[from]) {
+		from--
+	}
+	for to < len(body) && !utf8.RuneStart(body[to]) {
+		to++
+	}
+	s := strings.Join(strings.Fields(body[from:to]), " ")
 	if s == "" {
 		return ""
 	}
-	loc := re.FindStringIndex(s)
+	loc = re.FindStringIndex(s)
 	if loc == nil {
 		return ""
 	}
@@ -1159,6 +1275,20 @@ func bodySnippet(body string, re *regexp.Regexp, width int) string {
 		out += "…"
 	}
 	return out
+}
+
+// snippetFor returns the cached body-only match snippet for doc at the given
+// row width, computing it on first use for the current query.
+func (m Model) snippetFor(doc *model.Document, width int) string {
+	k := snippetKey{doc: doc, width: width}
+	if s, ok := m.snippets[k]; ok {
+		return s
+	}
+	s := bodySnippet(doc.Body, m.matchRe, width)
+	if m.snippets != nil {
+		m.snippets[k] = s
+	}
+	return s
 }
 
 // matchesAny reports whether re matches any of the non-empty strings.
@@ -1204,7 +1334,30 @@ func RunWithFilter(items []Item, cfg Config, f FilterFunc) ([]Item, error) {
 	cfg.Theme = &th
 	m := NewModelWithFilter(items, cfg, f)
 	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	// BubbleTea only handles Ctrl-C between frames, so a slow render would
+	// otherwise leave the process unquittable. Give the normal handler a
+	// moment to quit cleanly, then restore the terminal and force-exit.
+	interrupted := make(chan os.Signal, 1)
+	signal.Notify(interrupted, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(interrupted)
+	stopped := make(chan struct{})
+	go func() {
+		select {
+		case <-interrupted:
+		case <-stopped:
+			return
+		}
+		select {
+		case <-stopped:
+		case <-time.After(500 * time.Millisecond):
+			fmt.Fprint(os.Stderr, "\x1b[0m\x1b[?25h\x1b[?1049l")
+			os.Exit(130)
+		}
+	}()
+
 	final, err := p.Run()
+	close(stopped)
 	if err != nil {
 		return nil, err
 	}

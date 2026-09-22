@@ -784,3 +784,20 @@ func TestDefaultFilterEmptyQueryReturnsAll(t *testing.T) {
 		t.Fatalf("expected 2, got %d", got)
 	}
 }
+
+// A multi-megabyte, single-line body must render bounded both with and
+// without an active query: an unbounded excerpt (or a nil-regexp panic) stalls
+// or crashes the TUI on imported notes.
+func TestPreviewLargeBodyIsBounded(t *testing.T) {
+	body := strings.Repeat("lorem ipsum dolor sit amet ", 120000)
+	doc := &model.Document{Path: "big.md", Title: "Big", Body: body}
+	for _, re := range []*regexp.Regexp{nil, termsRegexp([]string{"dolor"})} {
+		out := previewTextHighlighted(doc, 100, re, true)
+		if out == "" {
+			t.Fatal("expected a rendered preview")
+		}
+		if len(out) > 400000 {
+			t.Fatalf("preview output %d bytes; large bodies must be bounded", len(out))
+		}
+	}
+}
