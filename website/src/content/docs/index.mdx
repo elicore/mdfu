@@ -23,7 +23,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 **Why mdfu?**
 
 - One box: bare words fuzzy-match, `key:value` hard-filters, AND-combined.
-- Two modes: interactive TUI picker by default, pipeable `--filter` mode (fzf-compatible).
+- Two modes: interactive TUI picker by default, pipeable filter mode (`mdfu <query>`, fzf-compatible).
 - No daemon, no persistent index, no `cgo` by default.
 
 ```
@@ -45,16 +45,16 @@ Run it inside your notes folder — the root defaults to `.`:
 ```sh
 cd testdata
 mdfu
-mdfu --filter "type:Task"
-mdfu --filter "status:Draft"
+mdfu "type:Task"
+mdfu "status:Draft"
 ```
 
 Three filter examples to try first:
 
 ```sh
-mdfu --filter "type:Task"       # → portent-task.md
-mdfu --filter "tag:launch"      # → portent-task.md
-mdfu --filter "author:bob"      # → generic.md (custom frontmatter)
+mdfu "type:Task"       # → portent-task.md
+mdfu "tag:launch"      # → portent-task.md
+mdfu "author:bob"      # → generic.md (custom frontmatter)
 ```
 
 ## Explore

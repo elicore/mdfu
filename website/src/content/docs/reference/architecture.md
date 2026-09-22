@@ -3,7 +3,7 @@ title: Architecture
 description: Pipeline, package responsibilities, constraints, and performance budgets.
 ---
 
-Pipeline for both modes (`--filter` and TUI):
+Pipeline for both modes (filter and TUI):
 
 ```
 scan → parse → query → search → output/tui

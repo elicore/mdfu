@@ -3,7 +3,7 @@ title: TUI
 description: Interactive picker — live filtering, keybindings, preview pane.
 ---
 
-Launch by omitting `--filter`:
+Launch with no query:
 
 ```sh
 mdfu [--root DIR] [--hidden] [--limit N] [--archived] [--no-hyperlinks]
@@ -64,4 +64,4 @@ Finish the parser track so the search track can rank fixtures.
 
 The preview stacks, top to bottom: the filename header (base name, own color), the document title (own color, no `Title:` label), the frontmatter rows as `key: value` with list values rendered as colored pills (here `Tags:`), and the rendered markdown body. JSON-object frontmatter values flatten inline under their parent key as `k1: v1, k2: v2`. The old `Preview` heading and `---` separator are gone; the full `Path:` row stays in the frontmatter block so the complete path remains visible and copyable.
 
-See also: [Query Syntax](/guide/query-syntax/) for what to type, and [CLI](/reference/cli/) for `--filter` non-interactive mode.
+See also: [Query Syntax](/guide/query-syntax/) for what to type, and [CLI](/reference/cli/) for non-interactive filter mode.

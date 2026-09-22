@@ -3,7 +3,7 @@ title: Configuration
 description: "Optional TUI theme file: XDG path, precedence, and every key."
 ---
 
-mdfu works with zero configuration. An optional YAML file restyles the interactive [TUI](/guide/tui/): colors, pill shape, frontmatter visibility, and how many body lines the preview renders. The file is read once at startup and only affects the TUI; `--filter` mode ignores it.
+mdfu works with zero configuration. An optional YAML file restyles the interactive [TUI](/guide/tui/): colors, pill shape, frontmatter visibility, and how many body lines the preview renders. The file is read once at startup and only affects the TUI; non-interactive filter mode ignores it.
 
 ## Location and precedence
 
@@ -17,6 +17,8 @@ The theme resolves from the first source that applies:
 When no file exists, the builtin defaults apply, so the file is never required. A file requested explicitly (via `--config` or `$MDFU_CONFIG`) that is missing, unreadable, or malformed is an error. A malformed discovered file is ignored with a single warning line, and the defaults apply.
 
 Unknown keys are ignored. Invalid enum values keep the builtin default, and numeric settings are clamped into their supported ranges.
+
+Run `mdfu --config default` to print the builtin defaults — every key below with its default value — to stdout, then copy and edit the result.
 
 ## Keys
 
