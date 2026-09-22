@@ -1,6 +1,6 @@
 # mdfu
 
-Fuzzy finder for Markdown notes — body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`--filter`, fzf-compatible).
+Fuzzy finder for Markdown notes — body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`mdfu <query>`, fzf-compatible).
 
 Requires Go 1.25+.
 
@@ -26,25 +26,25 @@ git clone https://github.com/elicore/mdfu && cd mdfu && go build -o mdfu ./cmd/m
 cd ~/vault/Notes
 
 mdfu                                    # interactive picker
-mdfu --filter "retention"               # print matching paths (pipeable)
-mdfu --filter "type:Task tag:launch"    # key:value hard filters, AND-combined
-mdfu --filter "status:Draft" --format json
+mdfu "retention"                        # print matching paths (pipeable)
+mdfu "type:Task tag:launch"             # key:value hard filters, AND-combined
+mdfu "status:Draft" --format json
 ```
 
 Point it somewhere else with `--root`:
 
 ```sh
-mdfu --root ~/vault/Notes --filter "type:Metric"
+mdfu --root ~/vault/Notes "type:Metric"
 ```
 
 Handy one-liners:
 
 ```sh
 # Open the top match in your editor
-$EDITOR "$(mdfu --filter "monthly active" --limit 1)"
+$EDITOR "$(mdfu "monthly active" --limit 1)"
 
 # Feed a selection to another tool (paths, one per line)
-mdfu --filter "tag:launch" | xargs wc -l
+mdfu "tag:launch" | xargs wc -l
 ```
 
 Try it on the bundled fixtures:
@@ -52,7 +52,7 @@ Try it on the bundled fixtures:
 ```sh
 cd testdata
 mdfu                                # interactive picker
-mdfu --filter "kumquat zebra"       # → bad-yaml.md (broken YAML stays searchable)
+mdfu "kumquat zebra"                # → bad-yaml.md (broken YAML stays searchable)
 ```
 
 ## Develop

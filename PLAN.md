@@ -13,7 +13,7 @@ live at <https://elicore.github.io/mdfu/>):
 
 ## Constraints (locked)
 
-- Interactive TUI (default) + `--filter` non-interactive (fzf-compatible).
+- Interactive TUI (default) + positional-query non-interactive filter (fzf-compatible).
 - Single-box syntax: bare words fuzzy-match; `key:value` hard-filter; AND-combined.
 - Unified normalized model, not strict per-format keys.
 - No persistent index, no daemon, no `cgo` by default.
