@@ -40,7 +40,7 @@ func loadDocuments(root string, includeHidden bool, respectGitignore bool) ([]*m
 }
 
 // runQueryWithOptions is the shared scan→parse→query→rank→results pipeline
-// used by both --filter and TUI modes.
+// used by both filter and TUI modes.
 func runQueryWithOptions(root string, includeHidden bool, respectGitignore bool, queryStr string, includeArchived bool, limit int) ([]output.Result, error) {
 	docs, err := loadDocuments(root, includeHidden, respectGitignore)
 	if err != nil {
@@ -71,7 +71,7 @@ func runQueryWithOptions(root string, includeHidden bool, respectGitignore bool,
 }
 
 // runQuery runs the shared pipeline with gitignore respected (the default).
-// It is the testable helper used by both --filter and TUI paths.
+// It is the testable helper used by both filter and TUI paths.
 func runQuery(root string, includeHidden bool, queryStr string, includeArchived bool, limit int) ([]output.Result, error) {
 	return runQueryWithOptions(root, includeHidden, true, queryStr, includeArchived, limit)
 }

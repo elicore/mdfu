@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Result is the display unit for --filter mode. It is intentionally
+// Result is the display unit for filter mode. It is intentionally
 // decoupled from internal/scan, internal/query and internal/search:
 // callers map ranked documents to Results before formatting.
 type Result struct {

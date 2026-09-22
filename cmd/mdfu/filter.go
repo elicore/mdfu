@@ -2,19 +2,19 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"io"
 
 	"github.com/elicore/mdfu/internal/output"
 )
 
-// runFilter executes --filter mode: it runs the shared
+// runFilter executes filter mode: it runs the shared
 // scan→parse→query→rank→output pipeline, prints the results to stdout in the
 // requested format, and returns a process exit code (0 with results, 1 when
 // empty or on error).
-func runFilter(root string, includeHidden bool, respectGitignore bool, queryStr string, includeArchived bool, limit int, format string) int {
+func runFilter(stdout, stderr io.Writer, root string, includeHidden bool, respectGitignore bool, queryStr string, includeArchived bool, limit int, format string) int {
 	results, err := runQueryWithOptions(root, includeHidden, respectGitignore, queryStr, includeArchived, limit)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "mdfu:", err)
+		fmt.Fprintln(stderr, "mdfu:", err)
 		return 1
 	}
 	if len(results) == 0 {
@@ -29,7 +29,7 @@ func runFilter(root string, includeHidden bool, respectGitignore bool, queryStr 
 	case "json":
 		out, ferr = output.FormatJSON(results)
 		if ferr != nil {
-			fmt.Fprintln(os.Stderr, "format json:", ferr)
+			fmt.Fprintln(stderr, "format json:", ferr)
 			return 1
 		}
 	case "vimgrep":
@@ -37,6 +37,6 @@ func runFilter(root string, includeHidden bool, respectGitignore bool, queryStr 
 	default:
 		out = output.FormatPaths(results)
 	}
-	fmt.Print(out)
+	fmt.Fprint(stdout, out)
 	return 0
 }
