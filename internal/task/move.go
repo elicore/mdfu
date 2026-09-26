@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // runMove implements `mdfu task move <id> <file>`: relocate a task's whole
@@ -33,49 +32,11 @@ func runMove(env Env, args []string) Result {
 }
 
 // moveResolvedTask performs the mutation half of move against an already
-// resolved task. It is split out so a stale source can be exercised between
-// resolution and the write without touching the process filesystem in the
-// command layer.
+// resolved task by delegating to the MoveTask primitive. It is split out so a
+// stale source can be exercised between resolution and the write without
+// touching the process filesystem in the command layer.
 func moveResolvedTask(env Env, t Task, target string) Result {
-	srcPath := t.File
-
-	if info, err := os.Stat(target); err == nil && info.IsDir() {
-		return fail(env, fmt.Errorf("'%s' is a directory", target))
-	}
-	if sameFileReal(srcPath, target) {
-		return Result{Code: 0}
-	}
-	if err := assertWritablePath(srcPath); err != nil {
-		return fail(env, err)
-	}
-	if err := assertWritablePath(target); err != nil {
-		return fail(env, err)
-	}
-
-	src, err := Open(srcPath)
-	if err != nil {
-		return fail(env, err)
-	}
-	start := t.Line - 1
-	if start < 0 || start >= len(src.lines) || strings.TrimSuffix(src.lines[start], "\r") != t.HeaderRaw {
-		return fail(env, &StaleError{File: srcPath, ID: t.ID})
-	}
-	if err := src.Verify(t.ID, t.Line); err != nil {
-		return fail(env, err)
-	}
-	end, ok := blockRange(src.lines, start)
-	if !ok || end <= start {
-		return fail(env, &StaleError{File: srcPath, ID: t.ID})
-	}
-	block := strings.Join(src.lines[start:end], "\n")
-
-	if err := AppendBlock(target, block); err != nil {
-		return fail(env, err)
-	}
-	if err := src.ReplaceLines(start, end, nil); err != nil {
-		return fail(env, err)
-	}
-	if err := src.Commit(); err != nil {
+	if err := MoveTask(t, target); err != nil {
 		return fail(env, err)
 	}
 	return Result{Code: 0}

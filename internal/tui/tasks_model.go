@@ -354,7 +354,7 @@ func (m TaskModel) updateBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.enterMove()
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.Archive):
-		m.status = "archive: hook pending"
+		m.archiveFocused()
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.Help):
 		m.mode = taskModeHelp
@@ -406,16 +406,11 @@ func (m TaskModel) updateEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m TaskModel) updateMove(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case msg.String() == "enter":
-		if m.onSave != nil {
-			if err := m.onSave(); err != nil {
-				m.err = err
-				m.status = err.Error()
-				return m, nil
-			}
+		if err := m.commitMove(); err != nil {
+			m.err = err
+			m.status = err.Error()
+			return m, nil
 		}
-		m.status = "moved"
-		m.mode = taskModeBrowse
-		m.moveInput.Blur()
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.Cancel):
 		m.status = "cancelled"

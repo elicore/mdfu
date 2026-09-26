@@ -747,3 +747,81 @@ func TestTaskEditBody(t *testing.T) {
 		}
 	})
 }
+
+func TestTaskMove(t *testing.T) {
+	dir := t.TempDir()
+	writeTaskFile(t, dir, "tasks.md", "- [ ] PRJ-001 alpha\n  body one\n- [ ] PRJ-002 beta\n")
+	writeTaskFile(t, dir, "target.md", "# Target\n\n")
+	t.Chdir(dir)
+	items := loadTaskItems(t, ".")
+
+	m := NewTaskModelWithFilter(items, TaskConfig{Base: "."}, nil)
+	m = applyTaskKey(m, runeKey('m'))
+	if m.TaskMode() != taskModeMovePrompt {
+		t.Fatalf("m mode = %v, want move prompt", m.TaskMode())
+	}
+	if got := m.moveInput.Value(); got != "tasks.md" {
+		t.Fatalf("move prompt seeded %q, want tasks.md", got)
+	}
+	m.moveInput.SetValue("target.md")
+	m = applyTaskKey(m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	if got, want := readFile(t, "tasks.md"), "- [ ] PRJ-002 beta\n"; got != want {
+		t.Fatalf("source = %q, want %q", got, want)
+	}
+	if got, want := readFile(t, "target.md"), "# Target\n\n- [ ] PRJ-001 alpha\n  body one\n"; got != want {
+		t.Fatalf("target = %q, want %q", got, want)
+	}
+	cur := m.FilteredItems()[m.CursorIndex()]
+	if cur.ID != "PRJ-001" || cur.File != "target.md" {
+		t.Fatalf("cursor on %q in %q, want PRJ-001 in target.md", cur.ID, cur.File)
+	}
+}
+
+func TestTaskArchive(t *testing.T) {
+	dir := t.TempDir()
+	writeTaskFile(t, dir, "tasks.md", "- [ ] PRJ-001 open\n- [x] PRJ-002 done\n  done body\n")
+	t.Chdir(dir)
+	items := loadTaskItems(t, ".")
+
+	m := NewTaskModelWithFilter(items, TaskConfig{
+		Base:     ".",
+		ShowDone: true,
+		Config:   task.Config{ArchivePath: "_archive.md"},
+	}, nil)
+	m = applyTaskKey(m, runeKey('j'))
+	if id := m.FilteredItems()[m.CursorIndex()].ID; id != "PRJ-002" {
+		t.Fatalf("cursor on %q, want PRJ-002", id)
+	}
+	m = applyTaskKey(m, runeKey('a'))
+
+	if got, want := readFile(t, "tasks.md"), "- [ ] PRJ-001 open\n"; got != want {
+		t.Fatalf("source = %q, want %q", got, want)
+	}
+	if got, want := readFile(t, "_archive.md"), "- [x] PRJ-002 done\n  done body\n"; got != want {
+		t.Fatalf("archive = %q, want %q", got, want)
+	}
+}
+
+func TestTaskArchiveNotDone(t *testing.T) {
+	dir := t.TempDir()
+	writeTaskFile(t, dir, "tasks.md", "- [ ] PRJ-001 open\n")
+	t.Chdir(dir)
+	items := loadTaskItems(t, ".")
+
+	m := NewTaskModelWithFilter(items, TaskConfig{
+		Base:   ".",
+		Config: task.Config{ArchivePath: "_archive.md"},
+	}, nil)
+	m = applyTaskKey(m, runeKey('a'))
+
+	if !strings.Contains(m.Status(), "task is not done") {
+		t.Fatalf("status = %q, want task is not done", m.Status())
+	}
+	if _, err := os.Stat("_archive.md"); !os.IsNotExist(err) {
+		t.Fatalf("archive created on open task: err=%v", err)
+	}
+	if got := readFile(t, "tasks.md"); got != "- [ ] PRJ-001 open\n" {
+		t.Fatalf("source mutated: %q", got)
+	}
+}

@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -49,74 +48,8 @@ func runArchive(env Env, args []string) Result {
 	if scope.IsFile {
 		baseDir = filepath.Dir(scope.File)
 	}
-	archivePath := resolveArchive(baseDir, scope.Config.ArchivePath)
-
-	if err := preflightArchive(baseDir, archivePath); err != nil {
+	if err := ArchiveTasks(targets, baseDir, scope.Config); err != nil {
 		return fail(env, err)
-	}
-
-	edits := map[string]*FileEdit{}
-	var order []string
-	openEdit := func(file string) (*FileEdit, error) {
-		if fe, ok := edits[file]; ok {
-			return fe, nil
-		}
-		fe, err := Open(file)
-		if err != nil {
-			return nil, err
-		}
-		edits[file] = fe
-		order = append(order, file)
-		return fe, nil
-	}
-
-	// Preconditions: every source must still hold its task at the recorded line
-	// before a single byte is written anywhere.
-	for _, t := range targets {
-		fe, err := openEdit(t.File)
-		if err != nil {
-			return fail(env, err)
-		}
-		if err := fe.Verify(t.ID, t.Line); err != nil {
-			return fail(env, err)
-		}
-	}
-
-	blocks := make([]string, 0, len(targets))
-	for _, t := range targets {
-		fe := edits[t.File]
-		start := t.Line - 1
-		end, ok := blockRange(fe.lines, start)
-		if !ok {
-			end = start + 1
-		}
-		blocks = append(blocks, strings.Join(fe.lines[start:end], "\n"))
-	}
-	if err := AppendBlock(archivePath, strings.Join(blocks, "\n\n")); err != nil {
-		return fail(env, archiveWriteError(archivePath, err))
-	}
-
-	byFile := map[string][]Task{}
-	for _, t := range targets {
-		byFile[t.File] = append(byFile[t.File], t)
-	}
-	for _, file := range order {
-		fe := edits[file]
-		fileTasks := byFile[file]
-		sort.Slice(fileTasks, func(i, j int) bool { return fileTasks[i].Line > fileTasks[j].Line })
-		for _, t := range fileTasks {
-			start := t.Line - 1
-			end, ok := blockRange(fe.lines, start)
-			if !ok {
-				end = start + 1
-			}
-			if err := fe.ReplaceLines(start, end, nil); err != nil {
-				return fail(env, err)
-			}
-		}
-		if err := fe.Commit(); err != nil {
-			return fail(env, archiveWriteError(file, err))
-		}
 	}
 	return Result{Code: 0}
 }
