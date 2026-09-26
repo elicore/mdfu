@@ -34,7 +34,16 @@ func main() {
 // run parses args and dispatches to one of three modes: print the default
 // config (--config default), non-interactive filter (a positional query), or
 // the interactive TUI (no positional query). It returns a process exit code.
+//
+// Before parsing it offers argv to maybeRouteTask, which wires `mdfu task` /
+// `mdfu tasks` (see cmd/mdfu/task.go). "task" is also a Portent frontmatter
+// DocType users filter with `mdfu "type:Task"`, so the router's fall-through
+// keeps `mdfu task` usable as a fuzzy search.
 func run(args []string, stdout, stderr io.Writer) int {
+	if handled, code := maybeRouteTask(args, stdout, stderr); handled {
+		return code
+	}
+
 	fs := flag.NewFlagSet("mdfu", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
