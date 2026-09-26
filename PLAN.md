@@ -38,6 +38,10 @@ live at <https://elicore.github.io/mdfu/>):
 - [ ] **T7: Query v2.** `|` alternation within a token group, negation beyond tags, per-field boosting. Acceptance: query-syntax docs page updated + table tests.
 - [ ] **T8: Facet counts + highlighting.** Expose facet counts to TUI/`--format json` and match-fragment snippets. Acceptance: works indexless; aligns with T5 API if an index lands.
 
+### Delivered
+
+- [x] **T9: mdtask-compatible task CLI + TUI.** `mdfu task` (`list`, `view`/`show`, `open`, `move`, `set`, `ids`, `archive`, `validate`, `install-skills`) plus `mdfu tasks` for an interactive TUI, matching the external `mdtask` format (checkbox headers, `#tag`/`!priority`/`@key:value` metadata, `@blocked_by`, `.mdtaskrc`/`.mdfurc` config) and command surface. Acceptance: engine, CLI, and TUI tests green (`go test ./...`); `mdfu tasks` falls back to `mdfu task list` when stdout is not a TTY.
+
 ## Working agreements
 
 - `internal/model` is the shared contract — changes need cross-package sign-off.

@@ -55,6 +55,18 @@ mdfu                                # interactive picker
 mdfu "kumquat zebra"                # → bad-yaml.md (broken YAML stays searchable)
 ```
 
+## Tasks
+
+`mdfu` also ships an mdtask-compatible checklist workflow for task files:
+
+```sh
+mdfu task list                      # list tasks in the current scope
+mdfu task ids --prefix PRJ          # assign IDs to tasks without one
+mdfu tasks                          # interactive task TUI
+```
+
+`mdfu task` is compatible with the external `mdtask` tool's format and commands.
+
 ## Develop
 
 ```sh
