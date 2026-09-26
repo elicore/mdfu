@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/elicore/mdfu/internal/search"
+	"github.com/elicore/mdfu/internal/task"
 	"github.com/elicore/mdfu/internal/theme"
 	"github.com/elicore/mdfu/internal/tui"
 )
@@ -96,40 +97,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // inserted before the positional section so a query token that starts with a
 // dash stays a query token.
 func splitFlags(fs *flag.FlagSet, args []string) []string {
-	var flags, positional []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--":
-			positional = append(positional, args[i+1:]...)
-			return joinSections(flags, positional)
-		case a == "" || a == "-" || a[0] != '-':
-			positional = append(positional, a)
-			continue
-		}
-		flags = append(flags, a)
-		name := strings.TrimLeft(a, "-")
-		if eq := strings.IndexByte(name, '='); eq >= 0 {
-			name = name[:eq]
-		}
-		if f := fs.Lookup(name); f != nil && !isBoolFlag(f) && !strings.Contains(a, "=") && i+1 < len(args) {
-			i++
-			flags = append(flags, args[i])
-		}
-	}
-	return joinSections(flags, positional)
-}
-
-func joinSections(flags, positional []string) []string {
-	if len(positional) == 0 {
-		return flags
-	}
-	return append(append(flags, "--"), positional...)
-}
-
-func isBoolFlag(f *flag.Flag) bool {
-	bf, ok := f.Value.(interface{ IsBoolFlag() bool })
-	return ok && bf.IsBoolFlag()
+	return task.ReorderInterspersed(fs, args)
 }
 
 // filterLimit resolves the effective result cap for filter mode: an explicit
