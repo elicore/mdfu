@@ -25,6 +25,31 @@ Flags may appear before or after the query (`mdfu "status:Draft" --limit 5`); `-
 
 Exit codes: `0` = ≥1 match, `1` = no match, `2` = usage error (e.g. bad `--format`).
 
+## Task commands
+
+Two additional entry points read and edit checkbox tasks in your Markdown
+files. See [Tasks](/guide/tasks/) for the file format and full command
+reference, and [Tasks TUI](/guide/tasks-tui/) for the interactive browser.
+
+| Command | Synopsis | Meaning |
+|---|---|---|
+| `mdfu task [command] [args…]` | `mdfu task list` | Non-interactive task CLI. Nine subcommands: `list`, `view`/`show`, `open`, `move`, `set`, `ids`, `archive`, `validate`, `install-skills`. Bare `mdfu task` lists, and `mdfu task <id>` views (an ID is `PREFIX-<n>` or a bare number). |
+| `mdfu tasks [selection…]` | — | Interactive tasks TUI (a TTY is required; non-TTY falls back to `mdfu task list`). Accepts the same selection flags as `list`: `--all`, `--blocked`, `--sort`, repeatable `--tag`/`--priority`, and positional `#tag`/`!priority`. |
+
+Both commands are intercepted before the root flagset is parsed. Before the
+`task`/`tasks` candidate only `--config <path>` is accepted (it names the theme
+for the TUI); any other root flag written before the subcommand is
+`mdfu task: --<flag> must come after the task subcommand` at exit 2. A root
+value flag (`--root`, `--limit`, `--format`) followed by a value is skipped so
+`mdfu --root V task list` still reaches its candidate. An unknown token after
+`mdfu task` is a fuzzy search rather than an error (divergence D2).
+
+A bare `--` before the candidate bypasses the router entirely, so
+`mdfu -- task` is the escape hatch that performs a normal fuzzy search for
+`task`. Inside the task surface, `mdfu task -- <command>` is the explicit
+dispatch marker: it reaches the task command table directly (and prints the
+branded usage block for an unknown command, exit 1).
+
 ## Examples (against `testdata/`)
 
 ```sh

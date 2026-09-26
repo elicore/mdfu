@@ -64,6 +64,8 @@ export default defineConfig({
             { label: 'Scan', slug: 'guide/scan' },
             { label: 'TUI', slug: 'guide/tui' },
             { label: 'Configuration', slug: 'guide/configuration' },
+            { label: 'Tasks', slug: 'guide/tasks' },
+            { label: 'Tasks TUI', slug: 'guide/tasks-tui' },
           ],
         },
         {
