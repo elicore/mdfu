@@ -100,6 +100,13 @@ func TestDefaultYAMLReproducesDefaults(t *testing.T) {
 		{"PreviewHeader", got.PreviewHeader, want.PreviewHeader},
 		{"FrontmatterKey", got.FrontmatterKey, want.FrontmatterKey},
 		{"Pill", got.Pill, want.Pill},
+		{"TaskID", got.TaskID, want.TaskID},
+		{"TaskDone", got.TaskDone, want.TaskDone},
+		{"TaskPriority", got.TaskPriority, want.TaskPriority},
+		{"TaskTag", got.TaskTag, want.TaskTag},
+		{"TaskBlocker", got.TaskBlocker, want.TaskBlocker},
+		{"TaskSelected", got.TaskSelected, want.TaskSelected},
+		{"TaskPane", got.TaskPane, want.TaskPane},
 	}
 	for _, s := range styles {
 		if gotFP, wantFP := styleFingerprint(s.got), styleFingerprint(s.want); gotFP != wantFP {
@@ -127,8 +134,37 @@ func TestDefaultYAMLReproducesDefaults(t *testing.T) {
 }
 
 func styleFingerprint(s lipgloss.Style) string {
-	return fmt.Sprintf("fg=%v bg=%v bold=%t faint=%t underline=%t pad=%d",
-		s.GetForeground(), s.GetBackground(), s.GetBold(), s.GetFaint(), s.GetUnderline(), s.GetPaddingRight())
+	b, top, right, bottom, left := s.GetBorder()
+	return fmt.Sprintf("fg=%v bg=%v bold=%t faint=%t underline=%t pad=%d border=%v %t/%t/%t/%t borderFG=%v",
+		s.GetForeground(), s.GetBackground(), s.GetBold(), s.GetFaint(), s.GetUnderline(), s.GetPaddingRight(),
+		b, top, right, bottom, left, s.GetBorderTopForeground())
+}
+
+func TestDefaultYAMLRoundTrip(t *testing.T) {
+	path := writeConfig(t, t.TempDir(), DefaultYAML())
+	got, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile(DefaultYAML()) = %v, want nil", err)
+	}
+	want := Default()
+
+	styles := []struct {
+		name      string
+		got, want lipgloss.Style
+	}{
+		{"TaskID", got.TaskID, want.TaskID},
+		{"TaskDone", got.TaskDone, want.TaskDone},
+		{"TaskPriority", got.TaskPriority, want.TaskPriority},
+		{"TaskTag", got.TaskTag, want.TaskTag},
+		{"TaskBlocker", got.TaskBlocker, want.TaskBlocker},
+		{"TaskSelected", got.TaskSelected, want.TaskSelected},
+		{"TaskPane", got.TaskPane, want.TaskPane},
+	}
+	for _, s := range styles {
+		if gotFP, wantFP := styleFingerprint(s.got), styleFingerprint(s.want); gotFP != wantFP {
+			t.Errorf("%s: DefaultYAML round-trip = %s, want %s", s.name, gotFP, wantFP)
+		}
+	}
 }
 
 func TestLoadFile(t *testing.T) {
@@ -262,6 +298,95 @@ func TestLoadFile(t *testing.T) {
 				}
 				if th.HighlightSGR != "7" || th.LinkSGR != "4" {
 					t.Errorf("SGR = %q/%q, want 7/4", th.HighlightSGR, th.LinkSGR)
+				}
+			},
+		},
+		{
+			name: "task color keys override",
+			yaml: "task_id_color: \"1\"\ntask_done_color: \"2\"\ntask_priority_color: \"3\"\n" +
+				"task_tag_color: \"4\"\ntask_blocker_color: \"5\"\ntask_selected_color: \"6\"\n" +
+				"task_pane_border_color: \"7\"\n",
+			check: func(t *testing.T, th Theme) {
+				colors := []struct {
+					name string
+					got  lipgloss.TerminalColor
+					want lipgloss.TerminalColor
+				}{
+					{"TaskID", th.TaskID.GetForeground(), lipgloss.Color("1")},
+					{"TaskDone", th.TaskDone.GetForeground(), lipgloss.Color("2")},
+					{"TaskPriority", th.TaskPriority.GetForeground(), lipgloss.Color("3")},
+					{"TaskTag", th.TaskTag.GetForeground(), lipgloss.Color("4")},
+					{"TaskBlocker", th.TaskBlocker.GetForeground(), lipgloss.Color("5")},
+					{"TaskSelected", th.TaskSelected.GetForeground(), lipgloss.Color("6")},
+					{"TaskPane", th.TaskPane.GetBorderTopForeground(), lipgloss.Color("7")},
+				}
+				for _, sc := range colors {
+					if sc.got != sc.want {
+						t.Errorf("%s foreground = %v, want %v", sc.name, sc.got, sc.want)
+					}
+				}
+				if !th.TaskSelected.GetBold() {
+					t.Errorf("TaskSelected bold = false, want true")
+				}
+				if !th.TaskPane.GetBorderTop() {
+					t.Errorf("TaskPane border top = false, want true")
+				}
+			},
+		},
+		{
+			name: "task keys absent keep defaults",
+			yaml: "cursor_color: \"160\"\n",
+			check: func(t *testing.T, th Theme) {
+				want := Default()
+				styles := []struct {
+					name      string
+					got, want lipgloss.Style
+				}{
+					{"TaskID", th.TaskID, want.TaskID},
+					{"TaskDone", th.TaskDone, want.TaskDone},
+					{"TaskPriority", th.TaskPriority, want.TaskPriority},
+					{"TaskTag", th.TaskTag, want.TaskTag},
+					{"TaskBlocker", th.TaskBlocker, want.TaskBlocker},
+					{"TaskSelected", th.TaskSelected, want.TaskSelected},
+					{"TaskPane", th.TaskPane, want.TaskPane},
+				}
+				for _, s := range styles {
+					if gotFP, wantFP := styleFingerprint(s.got), styleFingerprint(s.want); gotFP != wantFP {
+						t.Errorf("%s = %s, want default %s", s.name, gotFP, wantFP)
+					}
+				}
+			},
+		},
+		{
+			name: "invalid task_pane_border keeps default",
+			yaml: "task_pane_border: octagon\n",
+			check: func(t *testing.T, th Theme) {
+				if gotFP, wantFP := styleFingerprint(th.TaskPane), styleFingerprint(taskPaneStyle("rounded", defaultTaskPaneBorderColor)); gotFP != wantFP {
+					t.Errorf("TaskPane = %s, want default %s", gotFP, wantFP)
+				}
+			},
+		},
+		{
+			name: "task_pane_border rounded applies",
+			yaml: "task_pane_border: rounded\n",
+			check: func(t *testing.T, th Theme) {
+				if !th.TaskPane.GetBorderTop() || !th.TaskPane.GetBorderLeft() {
+					t.Errorf("TaskPane border unset, want rounded")
+				}
+				if got := th.TaskPane.GetBorderTopForeground(); got != lipgloss.Color(defaultTaskPaneBorderColor) {
+					t.Errorf("TaskPane border foreground = %v, want %s", got, defaultTaskPaneBorderColor)
+				}
+			},
+		},
+		{
+			name: "task_pane_border none clears the border",
+			yaml: "task_pane_border: none\n",
+			check: func(t *testing.T, th Theme) {
+				if th.TaskPane.GetBorderTop() || th.TaskPane.GetBorderLeft() {
+					t.Errorf("TaskPane border set, want none")
+				}
+				if got := th.TaskPane.GetBorderTopForeground(); got != (lipgloss.NoColor{}) {
+					t.Errorf("TaskPane border foreground = %v, want none", got)
 				}
 			},
 		},

@@ -27,6 +27,14 @@ type Theme struct {
 	FrontmatterKey lipgloss.Style
 	Pill           lipgloss.Style
 
+	TaskID       lipgloss.Style
+	TaskDone     lipgloss.Style
+	TaskPriority lipgloss.Style
+	TaskTag      lipgloss.Style
+	TaskBlocker  lipgloss.Style
+	TaskSelected lipgloss.Style
+	TaskPane     lipgloss.Style
+
 	PillShape       string // "none" | "round"
 	MarkdownStyle   string // "" | "dark" | "light"
 	ShowFrontmatter bool
@@ -54,6 +62,14 @@ type fileConfig struct {
 	PillPadding         *int    `yaml:"pill_padding"`
 	HighlightSGR        *string `yaml:"highlight_sgr"`
 	LinkSGR             *string `yaml:"link_sgr"`
+	TaskIDColor         *string `yaml:"task_id_color"`
+	TaskDoneColor       *string `yaml:"task_done_color"`
+	TaskPriorityColor   *string `yaml:"task_priority_color"`
+	TaskTagColor        *string `yaml:"task_tag_color"`
+	TaskBlockerColor    *string `yaml:"task_blocker_color"`
+	TaskSelectedColor   *string `yaml:"task_selected_color"`
+	TaskPaneBorderColor *string `yaml:"task_pane_border_color"`
+	TaskPaneBorder      *string `yaml:"task_pane_border"`
 }
 
 // Builtin defaults. The colors reproduce the inline styles previously
@@ -72,7 +88,27 @@ const (
 	defaultBodyLines           = 30
 	defaultHighlightSGR        = "1;30;103"
 	defaultLinkSGR             = "1;4;38;5;212"
+	defaultTaskIDColor         = "245"
+	defaultTaskDoneColor       = "240"
+	defaultTaskPriorityColor   = "212"
+	defaultTaskTagColor        = "62"
+	defaultTaskBlockerColor    = "203"
+	defaultTaskSelectedColor   = "82"
+	defaultTaskPaneBorderColor = "238"
+	defaultTaskPaneBorder      = "rounded"
 )
+
+// taskPaneStyle builds the task pane style from an already validated border
+// enum ("none" | "rounded") and a border color. "none" leaves the style
+// borderless; every other accepted value is the rounded border.
+func taskPaneStyle(border, color string) lipgloss.Style {
+	if border == "none" {
+		return lipgloss.NewStyle()
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(color))
+}
 
 // Default returns the builtin theme, which reproduces the stock TUI look when
 // no config file exists.
@@ -89,6 +125,14 @@ func Default() Theme {
 			Foreground(lipgloss.Color(defaultPillForeground)).
 			Background(lipgloss.Color(defaultPillBackground)).
 			Padding(0, defaultPillPadding),
+
+		TaskID:       lipgloss.NewStyle().Foreground(lipgloss.Color(defaultTaskIDColor)),
+		TaskDone:     lipgloss.NewStyle().Foreground(lipgloss.Color(defaultTaskDoneColor)),
+		TaskPriority: lipgloss.NewStyle().Foreground(lipgloss.Color(defaultTaskPriorityColor)),
+		TaskTag:      lipgloss.NewStyle().Foreground(lipgloss.Color(defaultTaskTagColor)),
+		TaskBlocker:  lipgloss.NewStyle().Foreground(lipgloss.Color(defaultTaskBlockerColor)),
+		TaskSelected: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(defaultTaskSelectedColor)),
+		TaskPane:     taskPaneStyle(defaultTaskPaneBorder, defaultTaskPaneBorderColor),
 
 		PillShape:       defaultPillShape,
 		MarkdownStyle:   "",
@@ -146,6 +190,22 @@ pill_padding: 1
 highlight_sgr: "1;30;103"
 # Hyperlink labels in the preview.
 link_sgr: "1;4;38;5;212"
+# Task row ID, e.g. PRJ-3.
+task_id_color: "245"
+# Completed task rows.
+task_done_color: "240"
+# Task priority marker.
+task_priority_color: "212"
+# Task tags.
+task_tag_color: "62"
+# Blocked task marker.
+task_blocker_color: "203"
+# Selected task row (bold).
+task_selected_color: "82"
+# Task pane border color.
+task_pane_border_color: "238"
+# Task pane border shape: none | rounded.
+task_pane_border: rounded
 `
 
 // LoadFile reads the YAML theme at path and merges it per key over Default.
@@ -274,6 +334,37 @@ func (c fileConfig) apply(t Theme) Theme {
 	}
 	if c.LinkSGR != nil {
 		t.LinkSGR = *c.LinkSGR
+	}
+	if c.TaskIDColor != nil {
+		t.TaskID = lipgloss.NewStyle().Foreground(lipgloss.Color(*c.TaskIDColor))
+	}
+	if c.TaskDoneColor != nil {
+		t.TaskDone = lipgloss.NewStyle().Foreground(lipgloss.Color(*c.TaskDoneColor))
+	}
+	if c.TaskPriorityColor != nil {
+		t.TaskPriority = lipgloss.NewStyle().Foreground(lipgloss.Color(*c.TaskPriorityColor))
+	}
+	if c.TaskTagColor != nil {
+		t.TaskTag = lipgloss.NewStyle().Foreground(lipgloss.Color(*c.TaskTagColor))
+	}
+	if c.TaskBlockerColor != nil {
+		t.TaskBlocker = lipgloss.NewStyle().Foreground(lipgloss.Color(*c.TaskBlockerColor))
+	}
+	if c.TaskSelectedColor != nil {
+		t.TaskSelected = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(*c.TaskSelectedColor))
+	}
+	if c.TaskPaneBorderColor != nil || c.TaskPaneBorder != nil {
+		border, color := defaultTaskPaneBorder, defaultTaskPaneBorderColor
+		if c.TaskPaneBorderColor != nil {
+			color = *c.TaskPaneBorderColor
+		}
+		if c.TaskPaneBorder != nil {
+			switch *c.TaskPaneBorder {
+			case "none", "rounded":
+				border = *c.TaskPaneBorder
+			}
+		}
+		t.TaskPane = taskPaneStyle(border, color)
 	}
 	return t
 }
