@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	bubbleskey "github.com/charmbracelet/bubbles/key"
@@ -118,10 +117,15 @@ func (k TaskKeyMap) FullHelp() [][]bubbleskey.Binding {
 }
 
 // TaskConfig controls tasks TUI behaviour. Theme nil resolves to theme.Default.
+// Base and Config are additive: Base is the resolved task scope (a base
+// directory or a single --path file) and Config is the task configuration,
+// both used by the write/reload actions.
 type TaskConfig struct {
 	Theme       *theme.Theme
 	ShowBlocked bool
 	ShowDone    bool
+	Base        string
+	Config      task.Config
 }
 
 // TaskModel is the BubbleTea model for the tasks TUI. Like the note picker's
@@ -159,6 +163,15 @@ type TaskModel struct {
 	// pendingEdit holds the widget text seeded by enterEdit, so a save/cancel
 	// can decide whether anything changed even after the widget is blurred.
 	pendingEdit string
+
+	// base and taskCfg are the resolved task scope the write/reload actions
+	// operate against; newTask marks a taskModeEditTitle editor as a new-task
+	// creation rather than an edit of the focused task; action is the last
+	// TaskResult action.
+	base    string
+	taskCfg task.Config
+	newTask bool
+	action  string
 }
 
 // NewTaskModel builds a TaskModel with the default task filter.
@@ -210,6 +223,8 @@ func NewTaskModelWithFilter(items []TaskItem, cfg TaskConfig, f func(string, []T
 		th:          th,
 		showBlocked: cfg.ShowBlocked,
 		showDone:    cfg.ShowDone,
+		base:        cfg.Base,
+		taskCfg:     cfg.Config,
 	}
 	m.refilter()
 	return m
@@ -218,13 +233,6 @@ func NewTaskModelWithFilter(items []TaskItem, cfg TaskConfig, f func(string, []T
 // Init implements tea.Model.
 func (m TaskModel) Init() tea.Cmd {
 	return textinput.Blink
-}
-
-// View implements tea.Model. The real list/detail layout is todo 19's
-// tasks_view.go; until then this reports the live mode and item count so the
-// model is a complete tea.Model and headless tests have something to inspect.
-func (m TaskModel) View() string {
-	return fmt.Sprintf("tasks: mode=%d items=%d/%d", m.mode, len(m.filtered), len(m.items))
 }
 
 // Update implements tea.Model.
@@ -246,6 +254,14 @@ func (m TaskModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.clampCursor()
 		m.ensureVisible()
+		return m, nil
+	case taskEditorFinishedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		m.reload()
 		return m, nil
 	case tea.KeyMsg:
 		switch m.mode {
@@ -311,14 +327,19 @@ func (m TaskModel) updateBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focusPane = 1 - m.focusPane
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.ToggleDone):
-		m.toggleDone()
+		if err := m.toggleDoneTask(); err != nil {
+			m.err = err
+			m.status = err.Error()
+		}
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.ToggleBlk):
 		m.showBlocked = !m.showBlocked
 		m.refilter()
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.Open):
-		m.status = "open: hook pending"
+		if cmd := m.openInEditorCmd(); cmd != nil {
+			return m, cmd
+		}
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.EditTitle):
 		m.enterEdit(taskModeEditTitle)
@@ -327,7 +348,7 @@ func (m TaskModel) updateBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.enterEdit(taskModeEditBody)
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.New):
-		m.enterEdit(taskModeEditTitle)
+		m.enterNewTask()
 		return m, nil
 	case bubbleskey.Matches(msg, m.keys.Move):
 		m.enterMove()
@@ -372,30 +393,13 @@ func (m TaskModel) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updateEdit handles taskModeEditTitle and taskModeEditBody.
+// updateEdit dispatches taskModeEditTitle and taskModeEditBody to their
+// dedicated handlers in tasks_edit.go and tasks_edit_body.go.
 func (m TaskModel) updateEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case bubbleskey.Matches(msg, m.keys.Save):
-		if m.onSave != nil {
-			if err := m.onSave(); err != nil {
-				m.err = err
-				m.status = err.Error()
-				return m, nil
-			}
-		}
-		m.status = "saved"
-		m.mode = taskModeBrowse
-		m.editor.Blur()
-		return m, nil
-	case bubbleskey.Matches(msg, m.keys.Cancel):
-		m.status = "cancelled"
-		m.mode = taskModeBrowse
-		m.editor.Blur()
-		return m, nil
+	if m.mode == taskModeEditBody {
+		return m.updateEditBody(msg)
 	}
-	var cmd tea.Cmd
-	m.editor, cmd = m.editor.Update(msg)
-	return m, cmd
+	return m.updateEditTitle(msg)
 }
 
 // updateMove handles taskModeMovePrompt.
@@ -467,7 +471,19 @@ func (m *TaskModel) enterEdit(mode TaskMode) {
 		m.editor.SetValue(it.HeaderRaw)
 	}
 	m.pendingEdit = m.editor.Value()
+	m.newTask = false
 	m.mode = mode
+	_ = m.editor.Focus()
+}
+
+// enterNewTask seeds the editor with an empty task header and switches to the
+// title editor as a new-task creation.
+func (m *TaskModel) enterNewTask() {
+	m.editor.SetValue("- [ ] ")
+	m.pendingEdit = m.editor.Value()
+	m.newTask = true
+	m.status = "new task"
+	m.mode = taskModeEditTitle
 	_ = m.editor.Focus()
 }
 
@@ -544,9 +560,13 @@ func (m *TaskModel) refilter() {
 	if base == nil {
 		base = []TaskItem{}
 	}
+	all := m.allTasks()
 	out := make([]TaskItem, 0, len(base))
 	for _, it := range base {
 		if it.Checked && !m.showDone {
+			continue
+		}
+		if !m.showBlocked && task.HasUnresolvedBlockers(it.Task, all) {
 			continue
 		}
 		out = append(out, it)
@@ -600,17 +620,40 @@ func (m *TaskModel) ensureVisible() {
 	}
 }
 
-// visibleRows returns how many list rows fit in the current height.
+// visibleRows returns how many list rows fit in the current height. The detail
+// pane only competes for vertical space in the stacked (narrow) layout; in the
+// side-by-side layout both panes share the full body budget.
 func (m *TaskModel) visibleRows() int {
 	if m.height <= 0 {
 		return 20
 	}
-	reserved := 2 // input + status
+	reserved := 1 // status
+	if m.mode == taskModeFilter {
+		reserved++
+	}
+	if m.width < taskWideLayout {
+		reserved += m.detailRows()
+	}
 	n := m.height - reserved
 	if n < 3 {
 		n = 3
 	}
 	return n
+}
+
+// detailRows returns the vertical budget for the stacked detail pane.
+func (m *TaskModel) detailRows() int {
+	if m.height <= 0 {
+		return 10
+	}
+	p := (m.height - 1) / 3
+	if p < 3 {
+		p = 3
+	}
+	if p > 12 {
+		p = 12
+	}
+	return p
 }
 
 // taskItemKey identifies an item across refilters.
