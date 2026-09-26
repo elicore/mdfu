@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elicore/mdfu/internal/task"
+	"github.com/elicore/mdfu/internal/tui"
 )
 
 // isTerminal reports whether stdout is an interactive terminal. It is a
@@ -20,14 +23,91 @@ var isTerminal = defaultIsTerminal
 // can script the `ids` prompt answer.
 var stdin io.Reader = os.Stdin
 
-// runTasksTUI is the package-level hook the later tasks-TUI wiring replaces.
-// Until then it falls back to `task list`, so even when stdout is a TTY no
-// bubbletea program is constructed; keeping it a var means the router never
-// imports bubbletea. Documented contract: the hook receives the already
-// --config-stripped tasks arguments plus the resolved theme path.
+// runTasksTUI is the tasks TUI entry point. routeTasks calls it only when
+// stdout is a TTY, so this is the only place a bubbletea program is built; the
+// non-TTY branch stays byte-identical to `mdfu task list`. It parses the same
+// flags as the list subcommand, resolves the same scope through the task
+// engine, and hands the selected rows to tui.RunTasks.
 var runTasksTUI = func(stdout, stderr io.Writer, args []string, themePath string) int {
-	_ = themePath
-	return dispatchTask(stdout, stderr, append([]string{"list"}, args...))
+	env := newTaskEnv(stdout, stderr)
+
+	scope, rest, err := task.ResolveScope(env, args)
+	if err != nil {
+		fmt.Fprintf(stderr, "mdfu task: %s\n", err.Error())
+		return 1
+	}
+
+	fs := flag.NewFlagSet("tasks", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	all := fs.Bool("all", false, "include done tasks")
+	blocked := fs.Bool("blocked", false, "include blocked tasks")
+	sortBy := fs.String("sort", "", "sort field")
+	var tagFlags, priorityFlags repeatableFlag
+	fs.Var(&tagFlags, "tag", "filter by tag (repeatable; AND)")
+	fs.Var(&priorityFlags, "priority", "filter by priority (repeatable; OR)")
+
+	if err := fs.Parse(task.ReorderInterspersed(fs, rest)); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+
+	var extraTags, extraPriorities []string
+	for _, arg := range fs.Args() {
+		switch {
+		case strings.HasPrefix(arg, "#"):
+			extraTags = append(extraTags, arg)
+		case strings.HasPrefix(arg, "!"):
+			extraPriorities = append(extraPriorities, arg)
+		default:
+			fmt.Fprintf(stderr, "mdfu tasks: unexpected argument '%s'\n", arg)
+			return 2
+		}
+	}
+	tags := append(append([]string(nil), tagFlags...), extraTags...)
+	priorities := append(append([]string(nil), priorityFlags...), extraPriorities...)
+
+	tasks, _, err := task.LoadScope(scope)
+	if err != nil {
+		fmt.Fprintf(stderr, "mdfu task: %s\n", err.Error())
+		return 1
+	}
+	selected := task.SelectTasks(tasks, tags, priorities, *sortBy)
+	items := make([]tui.TaskItem, 0, len(selected))
+	for _, tk := range selected {
+		items = append(items, tui.TaskItem{Task: tk})
+	}
+
+	th, err := loadTheme(themePath, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "mdfu:", err)
+		return 2
+	}
+
+	_, err = tui.RunTasks(items, tui.TaskConfig{
+		Theme:       th,
+		ShowBlocked: *blocked,
+		ShowDone:    *all,
+		Base:        scope.Base,
+		Config:      scope.Config,
+	})
+	if err != nil {
+		fmt.Fprintln(stderr, "mdfu:", err)
+		return 1
+	}
+	return 0
+}
+
+// repeatableFlag collects a repeatable string flag, mirroring the task
+// engine's --tag/--priority list options.
+type repeatableFlag []string
+
+func (r *repeatableFlag) String() string { return strings.Join(*r, ",") }
+
+func (r *repeatableFlag) Set(value string) error {
+	*r = append(*r, value)
+	return nil
 }
 
 // defaultIsTerminal implements the repo's first TTY detection: stdout is a

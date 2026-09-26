@@ -188,6 +188,32 @@ func resolveScope(env Env, args []string) (Scope, []string, error) {
 	return scope, rest, nil
 }
 
+// ResolveScope is the exported wrapper around resolveScope. It lets the CLI
+// tasks TUI entry point resolve exactly the same scope (and strip the same
+// global --path flag) as `mdfu task list` without duplicating the precedence
+// rules.
+func ResolveScope(env Env, args []string) (Scope, []string, error) {
+	return resolveScope(env, args)
+}
+
+// SelectTasks applies the CLI list's tag (AND) and priority (OR) selection and
+// its priority sort to the full task scope. The tasks TUI entry point uses it
+// to pre-select and order rows, leaving the done/blocked gates to the model's
+// ShowDone/ShowBlocked options.
+func SelectTasks(tasks []Task, tags, priorities []string, sortBy string) []Task {
+	opts := ListOptions{
+		All:            true,
+		Blocked:        true,
+		TagFilter:      tags,
+		PriorityFilter: priorities,
+	}
+	out := selectVisible(tasks, opts)
+	if sortBy == "priority" {
+		sortByPriority(out)
+	}
+	return out
+}
+
 // extractPathFlag removes the global --path flag (both `--path X` and
 // `--path=X`) from args and returns its value plus the remaining args.
 func extractPathFlag(args []string) (string, []string) {

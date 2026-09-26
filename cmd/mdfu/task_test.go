@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -472,4 +473,33 @@ func TestTasksNonTTYParity(t *testing.T) {
 			t.Errorf("stdout = %q, want empty", out.String())
 		}
 	})
+}
+
+func TestRouteTasksTUICallsHook(t *testing.T) {
+	origTerminal, origHook := isTerminal, runTasksTUI
+	isTerminal = func() bool { return true }
+	var gotArgs []string
+	var gotTheme string
+	runTasksTUI = func(stdout, stderr io.Writer, args []string, themePath string) int {
+		gotArgs = append([]string(nil), args...)
+		gotTheme = themePath
+		return 7
+	}
+	defer func() {
+		isTerminal = origTerminal
+		runTasksTUI = origHook
+	}()
+
+	var out, errOut bytes.Buffer
+	code := run([]string{"tasks", "--all", "--config", "theme.yaml", "--path", "vault"}, &out, &errOut)
+	if code != 7 {
+		t.Fatalf("run(tasks --all --config theme.yaml --path vault) = %d, want the hook's 7; stderr=%q", code, errOut.String())
+	}
+	if gotTheme != "theme.yaml" {
+		t.Errorf("hook themePath = %q, want %q", gotTheme, "theme.yaml")
+	}
+	want := []string{"--all", "--path", "vault"}
+	if strings.Join(gotArgs, " ") != strings.Join(want, " ") {
+		t.Errorf("hook args = %v, want %v", gotArgs, want)
+	}
 }
