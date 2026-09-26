@@ -9,14 +9,13 @@ import (
 	"testing"
 )
 
-// loadFixture reads a fixture from ../../testdata/tasks and returns its lines
-// together with every fence-unmasked header parsed from it.
-func loadFixture(t *testing.T, name string) ([]string, []Task) {
+// parseTaskFile reads path and returns its lines together with every
+// fence-unmasked header parsed from it.
+func parseTaskFile(t *testing.T, path string) ([]string, []Task) {
 	t.Helper()
-	path := filepath.Join("..", "..", "testdata", "tasks", name)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read fixture %s: %v", name, err)
+		t.Fatalf("read %s: %v", path, err)
 	}
 	lines := strings.Split(string(data), "\n")
 	mask := fenceMask(lines)
@@ -33,6 +32,13 @@ func loadFixture(t *testing.T, name string) ([]string, []Task) {
 		tasks = append(tasks, task)
 	}
 	return lines, tasks
+}
+
+// loadFixture reads a fixture from ../../testdata/tasks and returns its lines
+// together with every fence-unmasked header parsed from it.
+func loadFixture(t *testing.T, name string) ([]string, []Task) {
+	t.Helper()
+	return parseTaskFile(t, filepath.Join("..", "..", "testdata", "tasks", name))
 }
 
 func TestFixtures(t *testing.T) {
@@ -79,8 +85,8 @@ func TestFixtures(t *testing.T) {
 		if title != "Draft the launch announcement" || meta != "#tag !high @status:doing" {
 			t.Errorf("splitMeta = (%q, %q)", title, meta)
 		}
-		if !reflect.DeepEqual(first.Tags, []string{"#tag"}) {
-			t.Errorf("Tags = %v, want [#tag]", first.Tags)
+		if !reflect.DeepEqual(first.Tags, []string{"tag"}) {
+			t.Errorf("Tags = %v, want [tag]", first.Tags)
 		}
 		if first.Priority != "high" {
 			t.Errorf("Priority = %q, want high", first.Priority)
@@ -112,7 +118,7 @@ func TestFixtures(t *testing.T) {
 			t.Errorf("META-1 title = %q, want trailing #123", meta1.Title)
 		}
 		for _, tag := range meta1.Tags {
-			if tag == "#123" {
+			if tag == "123" {
 				t.Errorf("META-1 parsed #123 as a tag")
 			}
 		}
@@ -120,8 +126,8 @@ func TestFixtures(t *testing.T) {
 		if meta2.Title != "Review the migration draft" {
 			t.Errorf("META-2 title = %q", meta2.Title)
 		}
-		if !reflect.DeepEqual(meta2.Tags, []string{"#docs"}) {
-			t.Errorf("META-2 tags = %v, want [#docs]", meta2.Tags)
+		if !reflect.DeepEqual(meta2.Tags, []string{"docs"}) {
+			t.Errorf("META-2 tags = %v, want [docs]", meta2.Tags)
 		}
 	})
 

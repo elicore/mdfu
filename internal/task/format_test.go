@@ -66,7 +66,7 @@ func TestParseHeader(t *testing.T) {
 			ok:   true,
 			want: Task{
 				ID: "BASIC-1", Status: ' ', Title: "Draft the launch announcement",
-				Tags: []string{"#tag"}, Priority: "high",
+				Tags: []string{"tag"}, Priority: "high",
 				PropertyOrder: []string{"status"}, Properties: map[string]string{"status": "doing"},
 				MetaSep: "\t\t",
 			},
@@ -179,7 +179,7 @@ func TestParseTokens(t *testing.T) {
 		{
 			name:         "all three forms",
 			meta:         "#tag !high @status:doing",
-			wantTags:     []string{"#tag"},
+			wantTags:     []string{"tag"},
 			wantPriority: "high",
 			wantProps:    map[string]string{"status": "doing"},
 			wantOrder:    []string{"status"},
@@ -187,7 +187,7 @@ func TestParseTokens(t *testing.T) {
 		{
 			name:         "multiple tags and properties",
 			meta:         "#a #b !crit @k:v @k2:v2",
-			wantTags:     []string{"#a", "#b"},
+			wantTags:     []string{"a", "b"},
 			wantPriority: "crit",
 			wantProps:    map[string]string{"k": "v", "k2": "v2"},
 			wantOrder:    []string{"k", "k2"},
@@ -235,7 +235,7 @@ func TestParseTokens(t *testing.T) {
 
 func TestRenderHeader(t *testing.T) {
 	t.Run("canonical separator when metadata added", func(t *testing.T) {
-		got := renderHeader(Task{Status: ' ', ID: "A-1", Title: "Title", Tags: []string{"#tag"}})
+		got := renderHeader(Task{Status: ' ', ID: "A-1", Title: "Title", Tags: []string{"tag"}})
 		want := "- [ ] A-1 Title\t\t#tag"
 		if got != want {
 			t.Errorf("renderHeader = %q, want %q", got, want)

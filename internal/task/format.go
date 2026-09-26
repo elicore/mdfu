@@ -132,7 +132,7 @@ func parseTokens(meta string) (tags []string, priority string, props map[string]
 	for _, word := range strings.Fields(meta) {
 		switch {
 		case tagRe.MatchString(word):
-			tags = append(tags, word)
+			tags = append(tags, word[1:])
 		case priorityRe.MatchString(word):
 			priority = word[1:]
 		case propertyRe.MatchString(word):
@@ -211,7 +211,9 @@ func renderHeader(t Task) string {
 // renderMeta rebuilds the metadata portion of a header.
 func renderMeta(t Task) string {
 	tokens := make([]string, 0, len(t.Tags)+1+len(t.PropertyOrder))
-	tokens = append(tokens, t.Tags...)
+	for _, tag := range t.Tags {
+		tokens = append(tokens, "#"+tag)
+	}
 	if t.Priority != "" {
 		tokens = append(tokens, "!"+t.Priority)
 	}

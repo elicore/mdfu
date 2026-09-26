@@ -1,7 +1,10 @@
 package task
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -58,10 +61,21 @@ func TestBlockers(t *testing.T) {
 		}
 	})
 
-	t.Run("flipping the blocker re-enters the unresolved set", func(t *testing.T) {
-		mutated := blockerTasks()
-		mutated[0].Checked = false
-		mutated[0].Status = ' '
+	t.Run("flipping the blocker in a file copy re-enters the unresolved set", func(t *testing.T) {
+		src := filepath.Join("..", "..", "testdata", "tasks", "spec-blockers.md")
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatalf("read fixture: %v", err)
+		}
+		flipped := strings.Replace(string(data), "- [x] BLK-1", "- [ ] BLK-1", 1)
+		if flipped == string(data) {
+			t.Fatal("fixture copy did not contain a done BLK-1 to flip")
+		}
+		path := filepath.Join(t.TempDir(), "spec-blockers.md")
+		if err := os.WriteFile(path, []byte(flipped), 0o644); err != nil {
+			t.Fatalf("write flipped fixture: %v", err)
+		}
+		_, mutated := parseTaskFile(t, path)
 		byID := map[string]Task{}
 		for _, task := range mutated {
 			byID[task.ID] = task
