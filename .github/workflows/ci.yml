@@ -22,6 +22,8 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: vet
         run: go vet ./...
+      - name: go mod tidy
+        run: go mod tidy -diff
       - name: test
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
       - name: coverage summary
