@@ -36,6 +36,11 @@ type Task struct {
 
 	MetaSep    string
 	SeedPrefix string
+
+	// Broad marks a task parsed by the broadened checkbox grammar. Only
+	// ParseCheckbox/LoadCheckboxes set it, so every CLI path leaves it false
+	// and the zero value preserves the frozen SPEC.md behaviour.
+	Broad bool
 }
 
 // Unidentified records a checkbox-shaped line that carries no ID. Seed lines

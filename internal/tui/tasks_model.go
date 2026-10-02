@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strconv"
 	"strings"
 
 	bubbleskey "github.com/charmbracelet/bubbles/key"
@@ -651,12 +652,14 @@ func (m *TaskModel) detailRows() int {
 	return p
 }
 
-// taskItemKey identifies an item across refilters.
+// taskItemKey identifies an item across refilters. Identified tasks key by ID
+// (stable across a move); an ID-less checkbox keys by file and line, which is
+// unique even when two lines have the same raw text.
 func taskItemKey(it TaskItem) string {
 	if it.ID != "" {
 		return "id:" + it.ID
 	}
-	return it.File + ":" + it.HeaderRaw
+	return it.File + ":" + strconv.Itoa(it.Line)
 }
 
 // taskIndexOfKey finds the item with the given key.

@@ -68,7 +68,7 @@ var runTasksTUI = func(stdout, stderr io.Writer, args []string, themePath string
 	tags := append(append([]string(nil), tagFlags...), extraTags...)
 	priorities := append(append([]string(nil), priorityFlags...), extraPriorities...)
 
-	tasks, _, err := task.LoadScope(scope)
+	tasks, err := task.LoadCheckboxes(scope)
 	if err != nil {
 		fmt.Fprintf(stderr, "mdfu task: %s\n", err.Error())
 		return 1

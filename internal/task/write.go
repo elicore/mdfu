@@ -7,6 +7,15 @@ import (
 	"strings"
 )
 
+// taskBlockRange returns the end of t's block, using the broadened range for a
+// broadened checkbox item and the strict range otherwise.
+func taskBlockRange(t Task, lines []string, start int) (int, bool) {
+	if t.Broad {
+		return blockRangeAny(lines, start)
+	}
+	return blockRange(lines, start)
+}
+
 // MoveTask relocates t's whole block to the end of target. It is the reusable
 // mutation primitive behind `mdfu task move`, extracted so the TUI does not
 // duplicate the ordering rules: validate the target is not a directory, treat a
@@ -40,10 +49,14 @@ func MoveTask(t Task, target string) error {
 	if start < 0 || start >= len(src.lines) || strings.TrimSuffix(src.lines[start], "\r") != t.HeaderRaw {
 		return &StaleError{File: srcPath, ID: t.ID}
 	}
-	if err := src.Verify(t.ID, t.Line); err != nil {
+	if err := src.VerifyTask(t); err != nil {
 		return err
 	}
-	end, ok := blockRange(src.lines, start)
+	rangeFn := blockRange
+	if t.Broad {
+		rangeFn = blockRangeAny
+	}
+	end, ok := rangeFn(src.lines, start)
 	if !ok || end <= start {
 		return &StaleError{File: srcPath, ID: t.ID}
 	}
@@ -97,7 +110,7 @@ func ArchiveTasks(targets []Task, baseDir string, cfg Config) error {
 		if err != nil {
 			return err
 		}
-		if err := fe.Verify(t.ID, t.Line); err != nil {
+		if err := fe.VerifyTask(t); err != nil {
 			return err
 		}
 	}
@@ -106,7 +119,7 @@ func ArchiveTasks(targets []Task, baseDir string, cfg Config) error {
 	for _, t := range targets {
 		fe := edits[t.File]
 		start := t.Line - 1
-		end, ok := blockRange(fe.lines, start)
+		end, ok := taskBlockRange(t, fe.lines, start)
 		if !ok {
 			end = start + 1
 		}
@@ -126,7 +139,7 @@ func ArchiveTasks(targets []Task, baseDir string, cfg Config) error {
 		sort.Slice(fileTasks, func(i, j int) bool { return fileTasks[i].Line > fileTasks[j].Line })
 		for _, t := range fileTasks {
 			start := t.Line - 1
-			end, ok := blockRange(fe.lines, start)
+			end, ok := taskBlockRange(t, fe.lines, start)
 			if !ok {
 				end = start + 1
 			}

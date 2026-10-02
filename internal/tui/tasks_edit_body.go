@@ -68,7 +68,7 @@ func (m *TaskModel) saveBody() error {
 	if err != nil {
 		return err
 	}
-	if err := fe.Verify(it.ID, it.Line); err != nil {
+	if err := fe.VerifyTask(it.Task); err != nil {
 		return err
 	}
 	if err := fe.ReplaceBodyRange(start, end, bodyLines); err != nil {

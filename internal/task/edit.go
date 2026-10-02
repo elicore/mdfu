@@ -128,6 +128,31 @@ func (fe *FileEdit) Verify(taskID string, line int) error {
 	return nil
 }
 
+// VerifyLine re-reads path from disk and confirms line still holds exactly
+// raw. Broadened checkbox items carry no ID, so they are matched by their raw
+// header instead.
+func (fe *FileEdit) VerifyLine(line int, raw string) error {
+	data, err := os.ReadFile(fe.path)
+	if err != nil {
+		return err
+	}
+	lines, _ := splitLines(data, detectEOL(data))
+	if line < 1 || line > len(lines) || lines[line-1] != strings.TrimSuffix(raw, "\r") {
+		return &StaleError{File: fe.path, ID: raw}
+	}
+	return nil
+}
+
+// VerifyTask confirms t still sits at its recorded line, picking the check
+// that matches how it was parsed: exact raw header for broadened items,
+// ID-based for strict mdtask tasks.
+func (fe *FileEdit) VerifyTask(t Task) error {
+	if t.Broad {
+		return fe.VerifyLine(t.Line, t.HeaderRaw)
+	}
+	return fe.Verify(t.ID, t.Line)
+}
+
 // ReplaceHeaderLine stages a replacement of the 1-based header line.
 func (fe *FileEdit) ReplaceHeaderLine(line int, header string) error {
 	return fe.ReplaceLines(line-1, line, []string{header})
@@ -140,24 +165,17 @@ func (fe *FileEdit) ReplaceBodyRange(start, end int, bodyLines []string) error {
 }
 
 // FlipCheckbox stages the checkbox of the 1-based header line flipped between
-// [ ] and [x], leaving the rest of the line byte-identical.
+// unchecked and checked, leaving the rest of the line byte-identical. It
+// accepts both strict mdtask headers and broadened checkbox items.
 func (fe *FileEdit) FlipCheckbox(line int) error {
 	if line < 1 || line > len(fe.lines) {
 		return fmt.Errorf("line %d out of bounds for %d lines", line, len(fe.lines))
 	}
-	raw := fe.lines[line-1]
-	if _, ok := ParseHeader(raw); !ok {
+	flipped, ok := FlipCheckboxAny(fe.lines[line-1])
+	if !ok {
 		return fmt.Errorf("line %d is not a task header", line)
 	}
-	switch {
-	case strings.HasPrefix(raw, "- [ ] "):
-		raw = "- [x] " + raw[len("- [ ] "):]
-	case strings.HasPrefix(raw, "- [x] "):
-		raw = "- [ ] " + raw[len("- [x] "):]
-	default:
-		return fmt.Errorf("line %d is not a task header", line)
-	}
-	return fe.ReplaceLines(line-1, line, []string{raw})
+	return fe.ReplaceLines(line-1, line, []string{flipped})
 }
 
 // AppendBlock appends block to the end of path, creating parent directories as

@@ -34,7 +34,22 @@ func (m *TaskModel) commitMove() error {
 	m.mode = taskModeBrowse
 	m.moveInput.Blur()
 	m.reload()
+	m.focusMoved(target, it.HeaderRaw)
 	return nil
+}
+
+// focusMoved restores the cursor to the item just moved to target, matching by
+// exact header. An ID-less item's file+line key changes on a move, so the
+// key-based restore in refilter cannot follow it.
+func (m *TaskModel) focusMoved(target, header string) {
+	want := filepath.ToSlash(target)
+	for i := range m.filtered {
+		if m.filtered[i].HeaderRaw == header && filepath.ToSlash(m.filtered[i].File) == want {
+			m.cursor = i
+			m.ensureVisible()
+			return
+		}
+	}
 }
 
 // archiveFocused archives the focused task only when it is done. An open task

@@ -31,9 +31,10 @@ func (m TaskModel) renderTaskTitleEditor() string {
 }
 
 // renderTitleSidePanel parses the editor's current value and renders the ID,
-// status, tags, priority, and properties it recognizes.
+// status, tags, priority, and properties it recognizes. It uses the broadened
+// grammar so an edited non-mdtask checkbox still shows its metadata.
 func (m TaskModel) renderTitleSidePanel() string {
-	parsed, ok := task.ParseHeader(m.editor.Value())
+	parsed, ok := task.ParseCheckbox(m.editor.Value())
 	label := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	rows := make([][2]string, 0, 8)
 	if !ok {
@@ -117,7 +118,7 @@ func (m TaskModel) updateEditTitle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // "invalid task header" status and writes nothing.
 func (m *TaskModel) saveTitle() error {
 	header := strings.TrimRight(m.editor.Value(), "\r\n")
-	parsed, ok := task.ParseHeader(header)
+	parsed, ok := task.ParseCheckbox(header)
 	if !ok {
 		return errors.New("invalid task header")
 	}
@@ -140,7 +141,7 @@ func (m *TaskModel) replaceHeaderLine(header string) error {
 	if err != nil {
 		return err
 	}
-	if err := fe.Verify(it.ID, it.Line); err != nil {
+	if err := fe.VerifyTask(it.Task); err != nil {
 		return err
 	}
 	if err := fe.ReplaceHeaderLine(it.Line, header); err != nil {
@@ -149,7 +150,7 @@ func (m *TaskModel) replaceHeaderLine(header string) error {
 	if err := fe.Commit(); err != nil {
 		return err
 	}
-	parsed, _ := task.ParseHeader(header)
+	parsed, _ := task.ParseCheckbox(header)
 	parsed.Body = it.Body
 	parsed.BodyIndent = it.BodyIndent
 	parsed.File = it.File

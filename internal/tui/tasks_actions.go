@@ -89,7 +89,7 @@ func (m *TaskModel) toggleDoneTask() error {
 	if err != nil {
 		return err
 	}
-	if err := fe.Verify(it.ID, it.Line); err != nil {
+	if err := fe.VerifyTask(it.Task); err != nil {
 		return err
 	}
 	if err := fe.FlipCheckbox(it.Line); err != nil {
@@ -160,7 +160,7 @@ func (m *TaskModel) reload() {
 		scope.IsFile = true
 		scope.File = base
 	}
-	tasks, _, err := task.LoadScope(scope)
+	tasks, err := task.LoadCheckboxes(scope)
 	if err != nil {
 		m.err = err
 		m.status = err.Error()
