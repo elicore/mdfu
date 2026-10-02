@@ -66,6 +66,7 @@ export default defineConfig({
             { label: 'Configuration', slug: 'guide/configuration' },
             { label: 'Tasks', slug: 'guide/tasks' },
             { label: 'Tasks TUI', slug: 'guide/tasks-tui' },
+            { label: 'Any Checkbox', slug: 'guide/any-checkbox' },
           ],
         },
         {

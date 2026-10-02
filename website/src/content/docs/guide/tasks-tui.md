@@ -13,8 +13,19 @@ The selection flags match [`mdfu task list`](/guide/tasks/#list): by default
 only open, unblocked tasks are listed, `--all` includes done tasks, `--blocked`
 starts with blocked tasks shown, `--tag` is repeatable and AND-combined,
 `--priority` is repeatable and OR-combined, and positional `#tag` / `!priority`
-arguments add to those filters. `--path` selects the scope. Everything the
-browser reads and writes is the same [task format](/guide/tasks/) the CLI uses.
+arguments add to those filters. `--path` selects the scope. The non-interactive
+[`mdfu task`](/guide/tasks/) commands read and write the strict [task
+format](/guide/tasks/); the browser is deliberately broader (see below).
+
+## Any checkbox, not just mdtask tasks
+
+The browser lists **every markdown checkbox** in scope — any `-`/`*`/`+` bullet,
+any indentation, `[ ]`/`[x]`/`[X]`, with or without an ID — and gives each the
+full set of actions. This is browser-only: the `mdfu task …` CLI keeps the
+strict mdtask grammar, and the non-TTY fallback below lists only mdtask tasks.
+
+See [Any Checkbox](/guide/any-checkbox/) for the recognition rules, the
+per-action behaviour on ID-less items, identity, and nesting.
 
 ## Pane layout
 
@@ -100,7 +111,9 @@ is detected and reported instead of overwriting.
 When stdout is not a terminal, `mdfu tasks` does not start the full-screen
 program. It runs `mdfu task list` with the same arguments, byte-identical to the
 CLI command, with no alternate screen and no ANSI output. This keeps pipeable
-use (`mdfu tasks | …`) predictable.
+use (`mdfu tasks | …`) predictable. Because it reuses the strict CLI renderer,
+the fallback lists only mdtask tasks — the any-checkbox breadth above applies
+only to the interactive browser.
 
 ## Divergences (D1–D5)
 
@@ -113,5 +126,6 @@ described in full on the [Tasks](/guide/tasks/#divergences-d1d5) page; the
 browser itself follows the same format and writes the same files, so it adds no
 further divergence.
 
-See also: [Tasks](/guide/tasks/) for the file format and `mdfu task` commands,
-and [TUI](/guide/tui/) for the Markdown note picker.
+See also: [Any Checkbox](/guide/any-checkbox/) for the broadened recognition
+rules, [Tasks](/guide/tasks/) for the file format and `mdfu task` commands, and
+[TUI](/guide/tui/) for the Markdown note picker.

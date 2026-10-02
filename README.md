@@ -67,6 +67,16 @@ mdfu tasks                          # interactive task TUI
 
 `mdfu task` is compatible with the external `mdtask` tool's format and commands.
 
+### Any checkbox in the browser
+
+`mdfu tasks` lists **every** markdown checkbox, not just mdtask tasks: any
+`-`/`*`/`+` bullet, any indentation, `[ ]`/`[x]`/`[X]`, with or without an ID.
+Toggle it, edit its title or body, open it, move it, and archive it. The
+`mdfu task …` commands stay strict, so their output is byte-compatible.
+
+See [Any Checkbox](https://elicore.github.io/mdfu/guide/any-checkbox/) for the
+recognition rules and per-action behaviour.
+
 ## Develop
 
 ```sh

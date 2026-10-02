@@ -11,6 +11,12 @@ documented divergences below (D1–D5) are the only intentional differences.
 Everything here is non-interactive; for the full-screen browser see the
 [Tasks TUI](/guide/tasks-tui/).
 
+:::note
+The commands on this page are strict: they act only on mdtask-formatted tasks.
+The interactive [Tasks TUI](/guide/tasks-tui/) is broader and can show and edit
+[any markdown checkbox](/guide/any-checkbox/).
+:::
+
 ## Task format
 
 A task is a single line matching, anchored at the start of the line:
@@ -283,5 +289,7 @@ The format and command surface documented here are compatible with the external
 The specification was authored from public written documentation only; the
 project claims no endorsement by, or verified equality against, that tool.
 
-See also: the [Tasks TUI](/guide/tasks-tui/) for the interactive browser, and
-the [CLI](/reference/cli/) reference for the root flag surface.
+See also: the [Tasks TUI](/guide/tasks-tui/) for the interactive browser, the
+[Any Checkbox](/guide/any-checkbox/) page for the browser's broadened
+recognition rules, and the [CLI](/reference/cli/) reference for the root flag
+surface.
