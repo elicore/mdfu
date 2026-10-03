@@ -199,12 +199,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updateList handles keys in list mode: up/down or ctrl-k/ctrl-j navigate,
-// enter confirm, esc/ctrl-c abort, tab toggle multi-select, ctrl-a toggle
+// updateList handles keys in list mode. Only the allowlist below is handled:
+// up/down or ctrl-k/ctrl-j navigate, enter confirm, esc clears a non-empty
+// query before aborting, ctrl-c abort, tab toggle multi-select, ctrl-a toggle
 // archived, ctrl-p toggle preview, ctrl-f toggle the frontmatter panel,
 // ctrl-o open the previewed document's first web link, and `/` reveals and
-// focuses the search bar.
+// focuses the search bar. Every other key is dropped before it can reach the
+// hidden text input.
 func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.status = ""
 	switch msg.String() {
 	case "up", "ctrl+k":
 		if len(m.filtered) > 0 {
@@ -231,7 +234,15 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.confirmed = true
 		return m, tea.Quit
-	case "esc", "ctrl+c":
+	case "esc":
+		if m.input.Value() != "" {
+			m.input.SetValue("")
+			m.refilter()
+			return m, nil
+		}
+		m.aborted = true
+		return m, tea.Quit
+	case "ctrl+c":
 		m.aborted = true
 		return m, tea.Quit
 	case "tab":
@@ -264,26 +275,22 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		if !m.searching {
 			m.searching = true
-			m.status = ""
 			m.clampCursor()
 			m.ensureVisible()
 			return m, m.input.Focus()
 		}
 	}
-	// Fall through to text input for typing/editing keys.
-	prev := m.input.Value()
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	if m.input.Value() != prev {
-		m.refilter()
-	}
-	return m, cmd
+	// List mode handles only the allowlist above; unmapped keys (printable
+	// runes, editing keys, `e` until it is bound) are dropped, never forwarded
+	// to the hidden text input.
+	return m, nil
 }
 
 // updateSearch handles keys in search mode. esc returns to the list before the
 // abort case and retains the query; ctrl-c still aborts. A `/` is not special
 // here, so it lands in the query as a literal slash.
 func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.status = ""
 	switch msg.String() {
 	case "esc":
 		m.searching = false

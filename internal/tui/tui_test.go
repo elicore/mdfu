@@ -102,6 +102,65 @@ func TestTypingViaKeyMsgsNarrows(t *testing.T) {
 	}
 }
 
+// List mode only handles its allowlist; printable runes never reach the hidden
+// text input, so a stray keystroke cannot narrow the list.
+func TestListModeIgnoresPlainLetters(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	for _, r := range "abq" {
+		m = applyKey(m, runeKey(r))
+	}
+	if q := m.Query(); q != "" {
+		t.Fatalf("expected list-mode runes to be ignored, query = %q", q)
+	}
+	if got := len(m.FilteredItems()); got != 2 {
+		t.Fatalf("expected 2 filtered items, got %d", got)
+	}
+	if m.IsAborted() {
+		t.Fatal("expected plain letters not to abort")
+	}
+}
+
+// Editing keys are not in the list-mode allowlist either: backspace, ctrl+w
+// and left must not mutate the hidden query.
+func TestListModeEditingKeysDoNotMutateQuery(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m.SetQuery("foo")
+	m = applyKey(m, key(tea.KeyBackspace))
+	m = applyKey(m, tea.KeyMsg{Type: tea.KeyCtrlW})
+	m = applyKey(m, key(tea.KeyLeft))
+	if q := m.Query(); q != "foo" {
+		t.Fatalf("expected the hidden query to stay %q, got %q", "foo", q)
+	}
+}
+
+// esc in list mode is two-stage: a non-empty query is cleared first (the
+// picker stays open and restores the full list), and only an empty query
+// aborts.
+func TestEscInListClearsQueryThenAborts(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m.SetQuery("ta")
+	if got := len(m.FilteredItems()); got != 1 {
+		t.Fatalf("precondition: expected the query to narrow to 1 item, got %d", got)
+	}
+	m = applyKey(m, key(tea.KeyEsc))
+	if q := m.Query(); q != "" {
+		t.Fatalf("expected esc to clear the query, got %q", q)
+	}
+	if got := len(m.FilteredItems()); got != 3 {
+		t.Fatalf("expected the full list of 3 items after esc, got %d", got)
+	}
+	if m.IsAborted() {
+		t.Fatal("expected the first list-mode esc to keep the picker open")
+	}
+	m = applyKey(m, key(tea.KeyEsc))
+	if !m.IsAborted() {
+		t.Fatal("expected a second esc on an empty query to abort")
+	}
+}
+
 func TestSlashEntersSearchFocusesInput(t *testing.T) {
 	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
 	m := NewModelWithFilter(items, Config{}, substringStub)
