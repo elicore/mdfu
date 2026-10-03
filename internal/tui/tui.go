@@ -41,6 +41,14 @@ type FilterFunc func(query string, items []Item) []Item
 // injected so the TUI never imports internal/parse.
 type ReloadFunc func(path string) (*model.Document, error)
 
+// editorFinishedMsg reports that an external editor process exited. A non-nil
+// err means the editor could not run or failed; otherwise path identifies the
+// document to re-parse through the injected ReloadFunc.
+type editorFinishedMsg struct {
+	path string
+	err  error
+}
+
 // Config controls TUI behaviour.
 type Config struct {
 	Limit        int
@@ -55,6 +63,9 @@ type Config struct {
 	// ShowFrontmatter overrides the theme's frontmatter panel default; nil
 	// keeps the theme value.
 	ShowFrontmatter *bool
+	// Reload re-parses a document after an external editor exits; nil keeps
+	// the old document in place.
+	Reload ReloadFunc
 }
 
 // globalFilter allows integration code to wire the real search filter
@@ -156,6 +167,7 @@ func NewModelWithFilter(items []Item, cfg Config, f FilterFunc) Model {
 		showPrev:   cfg.Preview,
 		showArch:   cfg.ShowArchived,
 		limit:      cfg.Limit,
+		reload:     cfg.Reload,
 		hyperlinks: !cfg.NoHyperlinks,
 		theme:      th,
 		showFM:     showFM,
@@ -186,6 +198,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Width = w
 		}
 		m.clampCursor()
+		return m, nil
+	case editorFinishedMsg:
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		if m.reload == nil {
+			return m, nil
+		}
+		doc, err := m.reload(msg.path)
+		if err != nil {
+			m.status = err.Error()
+			return m, nil
+		}
+		m.replaceDoc(msg.path, doc)
+		m.refilter()
+		m.status = ""
 		return m, nil
 	case tea.KeyMsg:
 		if m.searching {
@@ -483,6 +512,21 @@ func (m *Model) ShowPreview() bool { return m.showPrev }
 func (m *Model) ShowFrontmatter() bool { return m.showFM }
 
 // --- internal filtering ---
+
+// replaceDoc swaps in a freshly parsed document for the item with the matching
+// path. The item's Score is left alone; the filter hook recomputes scores on
+// the refilter that follows. A nil document or a path that is no longer present
+// is a no-op.
+func (m *Model) replaceDoc(path string, doc *model.Document) {
+	if doc == nil {
+		return
+	}
+	for i := range m.items {
+		if m.items[i].Doc != nil && m.items[i].Doc.Path == path {
+			m.items[i].Doc = doc
+		}
+	}
+}
 
 func (m *Model) refilter() {
 	// Remember which document the cursor was on before the list is rebuilt so a

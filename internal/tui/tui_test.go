@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -66,6 +67,31 @@ func key(t tea.KeyType) tea.KeyMsg {
 
 func runeKey(r rune) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+}
+
+// applyMsg drives the model with a non-key message (e.g. editorFinishedMsg)
+// and returns the concrete Model.
+func applyMsg(m Model, msg tea.Msg) Model {
+	next, _ := m.Update(msg)
+	nm, ok := next.(Model)
+	if !ok {
+		panic(fmt.Sprintf("expected Model, got %T", next))
+	}
+	return nm
+}
+
+// reloadStub mirrors the injected parse hook: it returns a fresh copy of doc
+// for the edited path, deriving Path from the argument like parse.ParseFile
+// does. A non-nil calls counter records how often the hook was invoked.
+func reloadStub(doc *model.Document, calls *int) ReloadFunc {
+	return func(path string) (*model.Document, error) {
+		if calls != nil {
+			*calls++
+		}
+		cp := *doc
+		cp.Path = path
+		return &cp, nil
+	}
 }
 
 func TestFilterNarrowsViaStub(t *testing.T) {
@@ -1069,4 +1095,145 @@ func TestPreviewLargeBodyIsBounded(t *testing.T) {
 			t.Fatalf("preview output %d bytes; large bodies must be bounded", len(out))
 		}
 	}
+}
+
+// A finished editor run reloads the edited document through the injected hook.
+// Both the stored item and the filtered view must show the fresh document: a
+// stale filtered slice would keep rendering the old title.
+func TestEditorFinishedReloadsDoc(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
+	m := NewModelWithFilter(items, Config{Reload: reloadStub(&model.Document{Title: "beta edited"}, nil)}, substringStub)
+
+	m = applyMsg(m, editorFinishedMsg{path: "b.md"})
+
+	if got := m.Status(); got != "" {
+		t.Fatalf("expected the status to be cleared after a successful reload, got %q", got)
+	}
+	if got := m.AllItems()[1].Doc; got.Title != "beta edited" || got.Path != "b.md" {
+		t.Fatalf("expected AllItems to carry the reloaded doc with the path preserved, got %+v", got)
+	}
+	if got := m.AllItems()[0].Doc.Title; got != "alpha" {
+		t.Fatalf("expected non-matching docs untouched, got %q", got)
+	}
+	filtered := m.FilteredItems()
+	if len(filtered) != 3 {
+		t.Fatalf("expected 3 filtered items after reload, got %d", len(filtered))
+	}
+	if got := filtered[1].Doc; got.Title != "beta edited" || got.Path != "b.md" {
+		t.Fatalf("expected FilteredItems to carry the reloaded doc, got %+v", got)
+	}
+}
+
+// A title-only edit keeps the cursor on the edited path, even though the item
+// is necessarily rebuilt from the reloaded document.
+func TestEditorFinishedKeepsCursorOnTitleEdit(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
+	m := NewModelWithFilter(items, Config{Reload: reloadStub(&model.Document{Title: "beta edited"}, nil)}, substringStub)
+	m = applyKey(m, key(tea.KeyDown))
+	if got := m.FilteredItems()[m.CursorIndex()].Doc.Path; got != "b.md" {
+		t.Fatalf("precondition: expected cursor on b.md, got %q", got)
+	}
+
+	m = applyMsg(m, editorFinishedMsg{path: "b.md"})
+
+	if got := m.CursorIndex(); got != 1 {
+		t.Fatalf("expected cursor to stay at index 1, got %d", got)
+	}
+	if got := m.FilteredItems()[m.CursorIndex()].Doc; got.Path != "b.md" || got.Title != "beta edited" {
+		t.Fatalf("expected the cursor row to be the edited b.md, got %+v", got)
+	}
+}
+
+// A reload failure keeps the old document in both views and surfaces the error
+// as the transient status message.
+func TestEditorFinishedReloadErrorKeepsOldDoc(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	reloadErr := errors.New("parse: b.md: boom")
+	m := NewModelWithFilter(items, Config{Reload: func(string) (*model.Document, error) {
+		return nil, reloadErr
+	}}, substringStub)
+
+	m = applyMsg(m, editorFinishedMsg{path: "b.md"})
+
+	if got := m.Status(); got != reloadErr.Error() {
+		t.Fatalf("expected status %q, got %q", reloadErr.Error(), got)
+	}
+	if got := m.AllItems()[1].Doc; got.Title != "beta" || got.Path != "b.md" {
+		t.Fatalf("expected the old doc kept on reload error, got %+v", got)
+	}
+	if got := m.FilteredItems()[1].Doc.Title; got != "beta" {
+		t.Fatalf("expected the filtered view to keep the old doc, got %q", got)
+	}
+}
+
+// An editor failure aborts before parsing: the reload hook must not be called
+// and the status must show the editor error.
+func TestEditorFinishedEditorErrorDoesNotReload(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	calls := 0
+	m := NewModelWithFilter(items, Config{Reload: func(path string) (*model.Document, error) {
+		calls++
+		return &model.Document{Path: path, Title: "must not load"}, nil
+	}}, substringStub)
+	editorErr := errors.New("editor exited with status 1")
+
+	m = applyMsg(m, editorFinishedMsg{path: "b.md", err: editorErr})
+
+	if calls != 0 {
+		t.Fatalf("expected reload not to be called on an editor error, got %d calls", calls)
+	}
+	if got := m.Status(); got != editorErr.Error() {
+		t.Fatalf("expected status %q, got %q", editorErr.Error(), got)
+	}
+	if got := m.AllItems()[1].Doc.Title; got != "beta" {
+		t.Fatalf("expected the old doc kept on editor error, got %q", got)
+	}
+}
+
+// Without an injected hook the message is a no-op: items keep their documents
+// and nothing panics.
+func TestEditorFinishedNilReload(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	beforeDoc := m.AllItems()[1].Doc
+
+	m = applyMsg(m, editorFinishedMsg{path: "b.md"})
+
+	if got := len(m.AllItems()); got != 2 {
+		t.Fatalf("expected items unchanged with a nil reload hook, got %d", got)
+	}
+	if got := m.AllItems()[1].Doc; got != beforeDoc {
+		t.Fatalf("expected the same doc pointer with a nil reload hook, got %+v", got)
+	}
+	if got := m.AllItems()[1].Doc.Title; got != "beta" {
+		t.Fatalf("expected the old title with a nil reload hook, got %q", got)
+	}
+	if got := m.Status(); got != "" {
+		t.Fatalf("expected no status with a nil reload hook, got %q", got)
+	}
+}
+
+// When the edited document no longer matches the active query it leaves the
+// filtered view (the stored item is still updated), the cursor resets, and
+// rendering an empty result set does not panic.
+func TestEditorFinishedDocDroppedWhenNoLongerMatches(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
+	m := NewModelWithFilter(items, Config{Reload: reloadStub(&model.Document{Title: "renamed"}, nil)}, substringStub)
+	m.SetQuery("beta")
+	if got := len(m.FilteredItems()); got != 1 {
+		t.Fatalf("precondition: expected the query to narrow to 1 item, got %d", got)
+	}
+
+	m = applyMsg(m, editorFinishedMsg{path: "b.md"})
+
+	if got := len(m.FilteredItems()); got != 0 {
+		t.Fatalf("expected the renamed doc to drop out of the active filter, got %d", got)
+	}
+	if got := m.CursorIndex(); got != 0 {
+		t.Fatalf("expected the cursor to reset, got %d", got)
+	}
+	if got := m.AllItems()[1].Doc.Title; got != "renamed" {
+		t.Fatalf("expected the stored doc to be updated even when filtered out, got %q", got)
+	}
+	_ = m.View() // must not panic on an empty result set
 }
