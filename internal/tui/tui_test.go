@@ -89,6 +89,9 @@ func TestFilterNarrowsViaStub(t *testing.T) {
 func TestTypingViaKeyMsgsNarrows(t *testing.T) {
 	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
 	m := NewModelWithFilter(items, Config{}, substringStub)
+	// `/` enters search mode in a later change; set the mode directly so this
+	// test pins search-mode typing.
+	m.searching = true
 	for _, r := range "alp" {
 		m = applyKey(m, runeKey(r))
 	}
@@ -740,11 +743,52 @@ func TestViewKeepsHyperlink(t *testing.T) {
 	}
 }
 
+func TestDefaultListViewHidesSearchBar(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	if m.IsSearching() {
+		t.Fatal("expected the picker to start in list mode")
+	}
+	v := stripANSI(stripOSC8(m.View()))
+	if strings.Contains(v, "Search...") || strings.Contains(v, "> Search") {
+		t.Fatalf("expected no search bar in list mode, got:\n%s", v)
+	}
+	first := firstNonEmptyLine(v)
+	if !strings.Contains(first, "alpha") {
+		t.Fatalf("expected first non-empty line to be the first result, got %q", first)
+	}
+	// The only "> " row in list mode is the cursor indicator on a result row;
+	// no hidden search-bar line may remain.
+	for _, line := range strings.Split(v, "\n") {
+		if strings.HasPrefix(line, "> ") && !strings.Contains(line, "alpha") {
+			t.Fatalf("unexpected search-bar-like line in list mode: %q", line)
+		}
+	}
+
+	// Search mode (the `/` key that enters it arrives with the next change)
+	// renders the input as the first line again.
+	m.searching = true
+	v = stripANSI(stripOSC8(m.View()))
+	if !strings.HasPrefix(v, "> ") || !strings.Contains(v, "Search...") {
+		t.Fatalf("expected search bar after entering search mode, got:\n%s", v)
+	}
+}
+
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) != "" {
+			return line
+		}
+	}
+	return ""
+}
+
 func TestViewFitsTerminalHeight(t *testing.T) {
 	long := &model.Document{Path: "a.md", Title: "alpha", Body: strings.Repeat("body line\n", 100)}
 	items := []Item{{Doc: long}, mkItem("b.md", "beta")}
 	m := NewModelWithFilter(items, Config{Preview: true}, substringStub)
 
+	// List mode (default): the first line is a result, not the search bar.
 	// Wide (side-by-side) layout must not duplicate the list or overflow,
 	// which previously scrolled the search input off the top of the screen.
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
@@ -753,19 +797,38 @@ func TestViewFitsTerminalHeight(t *testing.T) {
 	if got := len(strings.Split(v, "\n")); got > 24 {
 		t.Fatalf("wide view = %d lines, want <= 24:\n%s", got, v)
 	}
-	if !strings.HasPrefix(v, "> ") {
-		t.Fatalf("expected search input on first line, got:\n%s", v)
+	if !strings.Contains(firstNonEmptyLine(v), "alpha") {
+		t.Fatalf("wide list mode: expected first line to be a result, got:\n%s", v)
 	}
 
-	// Stacked (narrow) layout.
+	// Stacked (narrow) layout, still list mode.
 	next, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = next.(Model)
 	v = m.View()
 	if got := len(strings.Split(v, "\n")); got > 24 {
 		t.Fatalf("narrow view = %d lines, want <= 24:\n%s", got, v)
 	}
+	if !strings.Contains(firstNonEmptyLine(v), "alpha") {
+		t.Fatalf("narrow list mode: expected first line to be a result, got:\n%s", v)
+	}
+
+	// Search mode: the bar is the first line in both layouts.
+	m.searching = true
+	v = m.View()
 	if !strings.HasPrefix(v, "> ") {
-		t.Fatalf("expected search input on first line, got:\n%s", v)
+		t.Fatalf("expected search input on first line in wide search mode, got:\n%s", v)
+	}
+	if got := len(strings.Split(v, "\n")); got > 24 {
+		t.Fatalf("wide search view = %d lines, want <= 24:\n%s", got, v)
+	}
+	next, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = next.(Model)
+	v = m.View()
+	if !strings.HasPrefix(v, "> ") {
+		t.Fatalf("expected search input on first line in narrow search mode, got:\n%s", v)
+	}
+	if got := len(strings.Split(v, "\n")); got > 24 {
+		t.Fatalf("narrow search view = %d lines, want <= 24:\n%s", got, v)
 	}
 }
 

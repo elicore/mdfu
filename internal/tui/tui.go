@@ -37,6 +37,10 @@ type Item struct {
 // the TUI importing internal/search or internal/query.
 type FilterFunc func(query string, items []Item) []Item
 
+// ReloadFunc re-parses one document after it was edited externally. It is
+// injected so the TUI never imports internal/parse.
+type ReloadFunc func(path string) (*model.Document, error)
+
 // Config controls TUI behaviour.
 type Config struct {
 	Limit        int
@@ -83,6 +87,13 @@ type Model struct {
 	height    int
 	confirmed bool
 	aborted   bool
+	// searching reports whether the search bar is visible; the picker opens
+	// in list mode with the bar hidden.
+	searching bool
+	// status is a transient status-bar message (empty hides it).
+	status string
+	// reload re-parses an edited document; nil disables reloading.
+	reload ReloadFunc
 	// hyperlinks enables OSC 8 terminal hyperlinks and hides raw URLs in the
 	// preview; it is derived from Config.NoHyperlinks.
 	hyperlinks bool
@@ -153,9 +164,10 @@ func NewModelWithFilter(items []Item, cfg Config, f FilterFunc) Model {
 	return m
 }
 
-// Init implements tea.Model.
+// Init implements tea.Model. The picker starts in list mode, so there is
+// nothing to blink until the search bar is revealed.
 func (m Model) Init() tea.Cmd {
-	return textinput.Blink
+	return nil
 }
 
 // Update implements tea.Model. Keybindings:
@@ -253,13 +265,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 //
-// The rendered height is kept within the terminal: the list and preview pane
-// never render the list twice, and both are capped so the search input at the
-// top cannot be scrolled off-screen.
+// In list mode the search bar is hidden and the result list starts on the
+// first line. The rendered height is kept within the terminal: the list and
+// preview pane never render the list twice, and both are capped so the search
+// input at the top cannot be scrolled off-screen once revealed.
 func (m Model) View() string {
 	var b strings.Builder
-	b.WriteString(m.input.View())
-	b.WriteString("\n")
+	if m.searching {
+		b.WriteString(m.input.View())
+		b.WriteString("\n")
+	}
 	if m.showPrev && m.width >= 100 {
 		// Wide layout: list and preview side by side (renderPreviewPane
 		// renders the list itself, so it must not be emitted again here).
@@ -301,6 +316,9 @@ func (m *Model) SetQuery(q string) {
 	m.input.SetValue(q)
 	m.refilter()
 }
+
+// IsSearching reports whether the search bar is visible (search mode).
+func (m *Model) IsSearching() bool { return m.searching }
 
 // CursorIndex returns the cursor position within FilteredItems.
 func (m *Model) CursorIndex() int { return m.cursor }
@@ -457,15 +475,25 @@ func (m *Model) visibleRows() int {
 	if m.height <= 0 {
 		return 20
 	}
-	reserved := 2 // input + status
-	if m.showPrev && m.width < 100 {
-		reserved += m.previewRows()
-	}
-	n := m.height - reserved
+	n := m.height - m.reservedRows()
 	if n < 3 {
 		n = 3
 	}
 	return n
+}
+
+// reservedRows returns the rows spent on chrome outside the result list: the
+// status bar, the search bar only while it is visible, and the stacked
+// preview pane.
+func (m *Model) reservedRows() int {
+	reserved := 1 // status
+	if m.searching {
+		reserved++ // search bar
+	}
+	if m.showPrev && m.width < 100 {
+		reserved += m.previewRows()
+	}
+	return reserved
 }
 
 // rowWidth returns the horizontal budget for a result row. In the wide
@@ -484,7 +512,9 @@ func (m Model) rowWidth() int {
 	return m.width
 }
 
-// previewRows returns the vertical budget for the stacked preview pane.
+// previewRows returns the vertical budget for the stacked preview pane. The
+// legacy (height-2)/3 formula is kept: that 2 is not the mode-sensitive chrome
+// reservation, which lives in reservedRows.
 func (m *Model) previewRows() int {
 	if m.height <= 0 {
 		return 10
