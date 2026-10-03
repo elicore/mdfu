@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,6 +124,32 @@ func TestRunQueryArchivedHiddenByDefault(t *testing.T) {
 	}
 	if !containsBase(paths, "task.md") {
 		t.Errorf("archived task.md should be visible with includeArchived=true, got %v", paths)
+	}
+}
+
+func TestReloadDocument(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.md")
+	if err := os.WriteFile(path, []byte("---\ntitle: Reloaded\n---\nbody\n"), 0644); err != nil {
+		t.Fatalf("write note: %v", err)
+	}
+
+	doc, err := reloadDocument(path)
+	if err != nil {
+		t.Fatalf("reloadDocument(%q): %v", path, err)
+	}
+	if doc == nil {
+		t.Fatalf("reloadDocument(%q) returned nil document", path)
+	}
+	if doc.Title != "Reloaded" {
+		t.Errorf("Title = %q, want %q", doc.Title, "Reloaded")
+	}
+	if !strings.Contains(doc.Body, "body") {
+		t.Errorf("Body = %q, want it to contain %q", doc.Body, "body")
+	}
+
+	if _, err := reloadDocument(filepath.Join(dir, "missing.md")); err == nil {
+		t.Error("reloadDocument(missing path) = nil error, want non-nil")
 	}
 }
 

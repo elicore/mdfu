@@ -150,6 +150,7 @@ func runTUI(stdout, stderr io.Writer, root string, includeHidden bool, respectGi
 		Preview:      true,
 		NoHyperlinks: noHyperlinks,
 		Theme:        th,
+		Reload:       reloadDocument,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, "mdfu:", err)

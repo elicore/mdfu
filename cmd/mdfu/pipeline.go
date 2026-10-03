@@ -39,6 +39,12 @@ func loadDocuments(root string, includeHidden bool, respectGitignore bool) ([]*m
 	return docs, nil
 }
 
+// reloadDocument re-parses a single document after an external editor exits.
+// It is the production tui.ReloadFunc injected into the TUI Config.
+func reloadDocument(path string) (*model.Document, error) {
+	return parse.ParseFile(path)
+}
+
 // runQueryWithOptions is the shared scan→parse→query→rank→results pipeline
 // used by both filter and TUI modes.
 func runQueryWithOptions(root string, includeHidden bool, respectGitignore bool, queryStr string, includeArchived bool, limit int) ([]output.Result, error) {
