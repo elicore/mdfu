@@ -462,6 +462,79 @@ func TestStatusBarAndView(t *testing.T) {
 	}
 }
 
+// The status bar is mode-aware: list mode advertises `/` and `e`, search mode
+// advertises esc:back; the shared hints and counters stay in both.
+func TestStatusBarModeHints(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+
+	// List mode.
+	v := stripANSI(stripOSC8(m.View()))
+	for _, want := range []string{"/:search", "e:edit", "tab:multi", "enter:select"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("list mode: expected status to contain %q, got:\n%s", want, v)
+		}
+	}
+	if strings.Contains(v, "esc:back") {
+		t.Fatalf("list mode: must not show the search-mode esc:back hint, got:\n%s", v)
+	}
+
+	// Search mode.
+	m = applyKey(m, runeKey('/'))
+	if !m.IsSearching() {
+		t.Fatal("precondition: expected / to enter search mode")
+	}
+	v = stripANSI(stripOSC8(m.View()))
+	if !strings.Contains(v, "esc:back") {
+		t.Fatalf("search mode: expected status to contain esc:back, got:\n%s", v)
+	}
+	if strings.Contains(v, "/:search") {
+		t.Fatalf("search mode: must not show the list-mode /:search hint, got:\n%s", v)
+	}
+	if strings.Contains(v, "e:edit") {
+		t.Fatalf("search mode: must not show the list-mode e:edit hint, got:\n%s", v)
+	}
+	for _, want := range []string{"tab:multi", "enter:select"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("search mode: expected shared hint %q, got:\n%s", want, v)
+		}
+	}
+
+	// Persistent counters/state stay in both modes.
+	for _, want := range []string{"2/2", "archived:hidden", "fm:shown"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("search mode: expected status to contain %q, got:\n%s", want, v)
+		}
+	}
+}
+
+// The status line is transient: a handler-set message is visible in View() and
+// returned by Status(), and the next allowlisted list-mode key clears it.
+func TestStatusFieldTransient(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+
+	m.status = "$EDITOR is not set"
+	if got := m.Status(); got != "$EDITOR is not set" {
+		t.Fatalf("expected Status() to return the message, got %q", got)
+	}
+	v := stripANSI(stripOSC8(m.View()))
+	if !strings.Contains(v, "$EDITOR is not set") {
+		t.Fatalf("expected the status message in View(), got:\n%s", v)
+	}
+	if !strings.Contains(v, " • $EDITOR is not set") {
+		t.Fatalf("expected the status appended after a separator, got:\n%s", v)
+	}
+
+	m = applyKey(m, key(tea.KeyDown))
+	if got := m.Status(); got != "" {
+		t.Fatalf("expected the next key to clear the status, got %q", got)
+	}
+	if v := stripANSI(stripOSC8(m.View())); strings.Contains(v, "$EDITOR is not set") {
+		t.Fatalf("expected the status message gone from View(), got:\n%s", v)
+	}
+}
+
 func TestPreviewText(t *testing.T) {
 	var body strings.Builder
 	for i := 1; i <= 40; i++ {

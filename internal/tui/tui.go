@@ -421,6 +421,9 @@ func (m *Model) SetQuery(q string) {
 // IsSearching reports whether the search bar is visible (search mode).
 func (m *Model) IsSearching() bool { return m.searching }
 
+// Status returns the transient status-bar message (empty when hidden).
+func (m *Model) Status() string { return m.status }
+
 // CursorIndex returns the cursor position within FilteredItems.
 func (m *Model) CursorIndex() int { return m.cursor }
 
@@ -869,7 +872,14 @@ func (m Model) renderStatus() string {
 	if m.showFM {
 		fm = "shown"
 	}
-	s := fmt.Sprintf("%d/%d • archived:%s • fm:%s • tab:multi • enter:select", len(m.filtered), len(m.items), arch, fm)
+	hints := "/:search • e:edit • tab:multi • enter:select"
+	if m.searching {
+		hints = "esc:back • tab:multi • enter:select"
+	}
+	s := fmt.Sprintf("%d/%d • archived:%s • fm:%s • %s", len(m.filtered), len(m.items), arch, fm, hints)
+	if m.status != "" {
+		s += " • " + m.status
+	}
 	return m.theme.Dim.Render(s)
 }
 
