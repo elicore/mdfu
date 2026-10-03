@@ -20,9 +20,9 @@ scan → parse → query → search → output/tui
 | `internal/search` | Hard-filter (`MatchesDoc`) + fuzzy `Rank` + `FilterArchived` | `Rank`, `MatchesDoc` — see [Search & Ranking](/guide/search-ranking/) |
 | `internal/tui` | BubbleTea picker, `FilterFunc` hook | `Run`, `NewModel`, `SetFilter` — see [TUI](/guide/tui/) |
 | `internal/output` | `paths/json/vimgrep` formatters + `Snippet` | `FormatPaths/JSON/Vimgrep` — see [CLI](/reference/cli/) |
-| `cmd/mdfu` | Flags, `runFilter` / `runTUI` wiring | `main.go`, `filter.go` |
+| `cmd/mdfu` | Flags, `runFilter` / `runTUI` wiring | `main.go`, `filter.go`, `pipeline.go` — `loadDocuments`, `buildFilterFunc`, `runQuery*`, `reloadDocument` |
 
-`internal/tui` never imports `internal/search`/`internal/query`; integration injects `tui.SetFilter(buildFilterFunc())` in `cmd/mdfu`.
+`internal/tui` never imports `internal/search`/`internal/query`; integration injects `tui.SetFilter(buildFilterFunc())` in `cmd/mdfu`. The picker's edit-and-reload path is injected too: `Config.Reload` is wired to `pipeline.go`'s `reloadDocument` (a `parse.ParseFile` wrapper), so the TUI re-parses an edited file without importing `internal/parse`.
 
 ## Constraints (locked)
 
