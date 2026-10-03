@@ -89,9 +89,8 @@ func TestFilterNarrowsViaStub(t *testing.T) {
 func TestTypingViaKeyMsgsNarrows(t *testing.T) {
 	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
 	m := NewModelWithFilter(items, Config{}, substringStub)
-	// `/` enters search mode in a later change; set the mode directly so this
-	// test pins search-mode typing.
-	m.searching = true
+	// `/` enters search mode; typing only reaches the input there.
+	m = applyKey(m, runeKey('/'))
 	for _, r := range "alp" {
 		m = applyKey(m, runeKey(r))
 	}
@@ -100,6 +99,79 @@ func TestTypingViaKeyMsgsNarrows(t *testing.T) {
 	}
 	if got := len(m.FilteredItems()); got != 1 {
 		t.Fatalf("expected 1 filtered item, got %d (%v)", got, m.FilteredItems())
+	}
+}
+
+func TestSlashEntersSearchFocusesInput(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	if m.IsSearching() {
+		t.Fatal("expected the picker to start in list mode")
+	}
+	next, _ := m.Update(runeKey('/'))
+	m = next.(Model)
+	if !m.IsSearching() {
+		t.Fatal("expected / to enter search mode")
+	}
+	if !m.input.Focused() {
+		t.Fatal("expected / to focus the search input")
+	}
+	if q := m.Query(); q != "" {
+		t.Fatalf("expected an empty query after /, got %q", q)
+	}
+	v := stripANSI(stripOSC8(m.View()))
+	if !strings.HasPrefix(v, "> ") {
+		t.Fatalf("expected the search input on the first line, got:\n%s", v)
+	}
+	if !strings.Contains(v, "Search...") {
+		t.Fatalf("expected the search placeholder, got:\n%s", v)
+	}
+}
+
+func TestSlashInSearchTypesLiteral(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m = applyKey(m, runeKey('/'))
+	m = applyKey(m, runeKey('/'))
+	if q := m.Query(); q != "/" {
+		t.Fatalf("expected the second / to be typed literally, got query %q", q)
+	}
+	if !m.IsSearching() {
+		t.Fatal("expected to stay in search mode when typing /")
+	}
+}
+
+func TestEscReturnsToListRetainingQuery(t *testing.T) {
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta"), mkItem("c.md", "gamma")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m = applyKey(m, runeKey('/'))
+	for _, r := range "alp" {
+		m = applyKey(m, runeKey(r))
+	}
+	if q := m.Query(); q != "alp" {
+		t.Fatalf("precondition: expected query alp, got %q", q)
+	}
+
+	m = applyKey(m, key(tea.KeyEsc))
+	if m.IsSearching() {
+		t.Fatal("expected esc to return to list mode")
+	}
+	if m.IsAborted() {
+		t.Fatal("esc in search mode must not abort")
+	}
+	if q := m.Query(); q != "alp" {
+		t.Fatalf("expected the query retained after esc, got %q", q)
+	}
+	if got := len(m.FilteredItems()); got != 1 {
+		t.Fatalf("expected 1 filtered item after esc, got %d", got)
+	}
+	v := stripANSI(stripOSC8(m.View()))
+	if strings.Contains(v, "Search...") {
+		t.Fatalf("expected the search bar hidden in list mode, got:\n%s", v)
+	}
+	first := firstNonEmptyLine(v)
+	if !strings.Contains(first, "alpha") || strings.Contains(first, "Search") {
+		t.Fatalf("expected the first line to be the filtered result, got %q", first)
 	}
 }
 
@@ -765,12 +837,14 @@ func TestDefaultListViewHidesSearchBar(t *testing.T) {
 		}
 	}
 
-	// Search mode (the `/` key that enters it arrives with the next change)
-	// renders the input as the first line again.
-	m.searching = true
+	// `/` enters search mode and renders the input as the first line again.
+	m = applyKey(m, runeKey('/'))
+	if !m.IsSearching() {
+		t.Fatal("expected / to enter search mode")
+	}
 	v = stripANSI(stripOSC8(m.View()))
 	if !strings.HasPrefix(v, "> ") || !strings.Contains(v, "Search...") {
-		t.Fatalf("expected search bar after entering search mode, got:\n%s", v)
+		t.Fatalf("expected search bar after pressing /, got:\n%s", v)
 	}
 }
 
@@ -813,7 +887,7 @@ func TestViewFitsTerminalHeight(t *testing.T) {
 	}
 
 	// Search mode: the bar is the first line in both layouts.
-	m.searching = true
+	m = applyKey(m, runeKey('/'))
 	v = m.View()
 	if !strings.HasPrefix(v, "> ") {
 		t.Fatalf("expected search input on first line in wide search mode, got:\n%s", v)

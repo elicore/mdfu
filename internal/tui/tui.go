@@ -170,12 +170,9 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update implements tea.Model. Keybindings:
-// up/down or ctrl-k/ctrl-j navigate, enter confirm, esc/ctrl-c abort,
-// tab toggle multi-select, ctrl-a toggle archived, ctrl-p toggle preview,
-// ctrl-f toggle the frontmatter panel, ctrl-o open the previewed document's
-// first web link.
-// All other keys go to the text input and trigger a refilter on change.
+// Update implements tea.Model. Key handling is dispatched on the mode:
+// list mode navigates results and reveals the search bar with `/`, while
+// search mode forwards typing to the input and returns to the list on esc.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -191,75 +188,172 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		return m, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "ctrl+k":
-			if len(m.filtered) > 0 {
-				if m.cursor > 0 {
-					m.cursor--
-				} else {
-					// wrap to bottom for convenience
-					m.cursor = len(m.filtered) - 1
-				}
-				m.ensureVisible()
-			}
-			return m, nil
-		case "down", "ctrl+j":
-			if len(m.filtered) > 0 {
-				if m.cursor < len(m.filtered)-1 {
-					m.cursor++
-				} else {
-					// wrap to top
-					m.cursor = 0
-				}
-				m.ensureVisible()
-			}
-			return m, nil
-		case "enter":
-			m.confirmed = true
-			return m, tea.Quit
-		case "esc", "ctrl+c":
-			m.aborted = true
-			return m, tea.Quit
-		case "tab":
-			if len(m.filtered) > 0 && m.cursor >= 0 && m.cursor < len(m.filtered) {
-				k := itemKey(m.filtered[m.cursor])
-				if m.selected[k] {
-					delete(m.selected, k)
-				} else {
-					m.selected[k] = true
-				}
-			}
-			return m, nil
-		case "ctrl+a":
-			m.showArch = !m.showArch
-			m.refilter()
-			return m, nil
-		case "ctrl+p":
-			m.showPrev = !m.showPrev
-			return m, nil
-		case "ctrl+f":
-			m.showFM = !m.showFM
-			return m, nil
-		case "ctrl+o":
-			if m.cursor >= 0 && m.cursor < len(m.filtered) {
-				if u := docFirstLink(m.filtered[m.cursor].Doc); u != "" {
-					_ = open.Open(u)
-				}
-			}
-			return m, nil
+		if m.searching {
+			return m.updateSearch(msg)
 		}
-		// Fall through to text input for typing/editing keys.
-		prev := m.input.Value()
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		if m.input.Value() != prev {
-			m.refilter()
-		}
-		return m, cmd
+		return m.updateList(msg)
 	}
 	// Let the cursor blink etc. flow to the input.
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	return m, cmd
+}
+
+// updateList handles keys in list mode: up/down or ctrl-k/ctrl-j navigate,
+// enter confirm, esc/ctrl-c abort, tab toggle multi-select, ctrl-a toggle
+// archived, ctrl-p toggle preview, ctrl-f toggle the frontmatter panel,
+// ctrl-o open the previewed document's first web link, and `/` reveals and
+// focuses the search bar.
+func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "ctrl+k":
+		if len(m.filtered) > 0 {
+			if m.cursor > 0 {
+				m.cursor--
+			} else {
+				// wrap to bottom for convenience
+				m.cursor = len(m.filtered) - 1
+			}
+			m.ensureVisible()
+		}
+		return m, nil
+	case "down", "ctrl+j":
+		if len(m.filtered) > 0 {
+			if m.cursor < len(m.filtered)-1 {
+				m.cursor++
+			} else {
+				// wrap to top
+				m.cursor = 0
+			}
+			m.ensureVisible()
+		}
+		return m, nil
+	case "enter":
+		m.confirmed = true
+		return m, tea.Quit
+	case "esc", "ctrl+c":
+		m.aborted = true
+		return m, tea.Quit
+	case "tab":
+		if len(m.filtered) > 0 && m.cursor >= 0 && m.cursor < len(m.filtered) {
+			k := itemKey(m.filtered[m.cursor])
+			if m.selected[k] {
+				delete(m.selected, k)
+			} else {
+				m.selected[k] = true
+			}
+		}
+		return m, nil
+	case "ctrl+a":
+		m.showArch = !m.showArch
+		m.refilter()
+		return m, nil
+	case "ctrl+p":
+		m.showPrev = !m.showPrev
+		return m, nil
+	case "ctrl+f":
+		m.showFM = !m.showFM
+		return m, nil
+	case "ctrl+o":
+		if m.cursor >= 0 && m.cursor < len(m.filtered) {
+			if u := docFirstLink(m.filtered[m.cursor].Doc); u != "" {
+				_ = open.Open(u)
+			}
+		}
+		return m, nil
+	case "/":
+		if !m.searching {
+			m.searching = true
+			m.status = ""
+			m.clampCursor()
+			m.ensureVisible()
+			return m, m.input.Focus()
+		}
+	}
+	// Fall through to text input for typing/editing keys.
+	prev := m.input.Value()
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	if m.input.Value() != prev {
+		m.refilter()
+	}
+	return m, cmd
+}
+
+// updateSearch handles keys in search mode. esc returns to the list before the
+// abort case and retains the query; ctrl-c still aborts. A `/` is not special
+// here, so it lands in the query as a literal slash.
+func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.searching = false
+		m.input.Blur()
+		m.clampCursor()
+		m.ensureVisible()
+		return m, nil
+	case "up", "ctrl+k":
+		if len(m.filtered) > 0 {
+			if m.cursor > 0 {
+				m.cursor--
+			} else {
+				// wrap to bottom for convenience
+				m.cursor = len(m.filtered) - 1
+			}
+			m.ensureVisible()
+		}
+		return m, nil
+	case "down", "ctrl+j":
+		if len(m.filtered) > 0 {
+			if m.cursor < len(m.filtered)-1 {
+				m.cursor++
+			} else {
+				// wrap to top
+				m.cursor = 0
+			}
+			m.ensureVisible()
+		}
+		return m, nil
+	case "enter":
+		m.confirmed = true
+		return m, tea.Quit
+	case "ctrl+c":
+		m.aborted = true
+		return m, tea.Quit
+	case "tab":
+		if len(m.filtered) > 0 && m.cursor >= 0 && m.cursor < len(m.filtered) {
+			k := itemKey(m.filtered[m.cursor])
+			if m.selected[k] {
+				delete(m.selected, k)
+			} else {
+				m.selected[k] = true
+			}
+		}
+		return m, nil
+	case "ctrl+a":
+		m.showArch = !m.showArch
+		m.refilter()
+		return m, nil
+	case "ctrl+p":
+		m.showPrev = !m.showPrev
+		return m, nil
+	case "ctrl+f":
+		m.showFM = !m.showFM
+		return m, nil
+	case "ctrl+o":
+		if m.cursor >= 0 && m.cursor < len(m.filtered) {
+			if u := docFirstLink(m.filtered[m.cursor].Doc); u != "" {
+				_ = open.Open(u)
+			}
+		}
+		return m, nil
+	}
+	// Fall through to text input for typing/editing keys.
+	prev := m.input.Value()
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	if m.input.Value() != prev {
+		m.refilter()
+	}
 	return m, cmd
 }
 
