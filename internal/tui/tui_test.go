@@ -3,7 +3,9 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -53,12 +55,19 @@ func substringStub(query string, items []Item) []Item {
 }
 
 func applyKey(m Model, k tea.KeyMsg) Model {
-	next, _ := m.Update(k)
+	nm, _ := applyKeyCmd(m, k)
+	return nm
+}
+
+// applyKeyCmd drives the model with a key and returns the resulting command so
+// tests can assert a command was produced without ever executing it.
+func applyKeyCmd(m Model, k tea.KeyMsg) (Model, tea.Cmd) {
+	next, cmd := m.Update(k)
 	nm, ok := next.(Model)
 	if !ok {
 		panic(fmt.Sprintf("expected Model, got %T", next))
 	}
-	return nm
+	return nm, cmd
 }
 
 func key(t tea.KeyType) tea.KeyMsg {
@@ -1236,4 +1245,174 @@ func TestEditorFinishedDocDroppedWhenNoLongerMatches(t *testing.T) {
 		t.Fatalf("expected the stored doc to be updated even when filtered out, got %q", got)
 	}
 	_ = m.View() // must not panic on an empty result set
+}
+
+// editorArgv is pure argv construction from $EDITOR: whitespace-separated
+// fields with the path appended last, no shell quoting.
+func TestEditorArgv(t *testing.T) {
+	cases := []struct {
+		name   string
+		editor string
+		path   string
+		want   []string
+	}{
+		{"flags", "code --wait", "a.md", []string{"code", "--wait", "a.md"}},
+		{"plain", "vim", "notes/b.md", []string{"vim", "notes/b.md"}},
+		{"collapses whitespace", "  vim   --wait  ", "a.md", []string{"vim", "--wait", "a.md"}},
+		{"path stays one argument", "nvim --clean", "dir with space/a.md", []string{"nvim", "--clean", "dir with space/a.md"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := editorArgv(tc.editor, tc.path)
+			if err != nil {
+				t.Fatalf("editorArgv(%q, %q) returned error: %v", tc.editor, tc.path, err)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("editorArgv(%q, %q) = %q, want %q", tc.editor, tc.path, got, tc.want)
+			}
+		})
+	}
+
+	for _, editor := range []string{"", "   ", "\t\n"} {
+		got, err := editorArgv(editor, "a.md")
+		if err == nil {
+			t.Fatalf("editorArgv(%q, ...) = %q, nil; want error", editor, got)
+		}
+		if got != nil {
+			t.Fatalf("editorArgv(%q, ...) returned argv %q alongside the error", editor, got)
+		}
+		if err.Error() != "$EDITOR is not set" {
+			t.Fatalf("editorArgv(%q, ...) error = %q, want %q", editor, err, "$EDITOR is not set")
+		}
+	}
+}
+
+// editorCommand wires the argv into an exec.Cmd that the caller later runs.
+func TestEditorCommandBuildsCmd(t *testing.T) {
+	c, err := editorCommand("vim --wait", "notes/a.md")
+	if err != nil {
+		t.Fatalf("editorCommand returned error: %v", err)
+	}
+	if got := filepath.Base(c.Path); got != "vim" {
+		t.Fatalf("expected the vim binary, got path %q", c.Path)
+	}
+	if want := []string{"vim", "--wait", "notes/a.md"}; !slices.Equal(c.Args, want) {
+		t.Fatalf("exec.Cmd args = %q, want %q", c.Args, want)
+	}
+	if _, err := editorCommand("   ", "a.md"); err == nil {
+		t.Fatal("expected a blank $EDITOR to error")
+	}
+}
+
+// Pressing `e` in list mode with no usable $EDITOR keeps the picker open,
+// reports through the status bar, and produces no command.
+func TestEWithoutEditorSetsStatus(t *testing.T) {
+	for _, editor := range []string{"", "   "} {
+		t.Run(fmt.Sprintf("EDITOR=%q", editor), func(t *testing.T) {
+			t.Setenv("EDITOR", editor)
+			items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+			m := NewModelWithFilter(items, Config{}, substringStub)
+
+			m, cmd := applyKeyCmd(m, runeKey('e'))
+
+			if cmd != nil {
+				t.Fatalf("expected no editor command for a blank $EDITOR, got %v", cmd)
+			}
+			if got := m.Status(); got != "$EDITOR is not set" {
+				t.Fatalf("expected status %q, got %q", "$EDITOR is not set", got)
+			}
+			if m.IsAborted() {
+				t.Fatal("a blank $EDITOR must not abort the picker")
+			}
+			if m.IsConfirmed() {
+				t.Fatal("a blank $EDITOR must not confirm the picker")
+			}
+			if got := m.Query(); got != "" {
+				t.Fatalf("expected the query to stay empty, got %q", got)
+			}
+			if got := len(m.FilteredItems()); got != 2 {
+				t.Fatalf("expected the items to stay unchanged, got %d", got)
+			}
+		})
+	}
+}
+
+// In search mode `e` is ordinary typing: it reaches the text input and must
+// not trigger the editor binding.
+func TestEIgnoredInSearchMode(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m = applyKey(m, runeKey('/'))
+
+	m, _ = applyKeyCmd(m, runeKey('e'))
+
+	if !m.IsSearching() {
+		t.Fatal("typing e must not leave search mode")
+	}
+	if got := m.Query(); got != "e" {
+		t.Fatalf("expected the query to gain e, got %q", got)
+	}
+	if got := m.Status(); got != "" {
+		t.Fatalf("expected no status while typing in search mode, got %q", got)
+	}
+}
+
+// With nothing focusable there is no file to open: `e` stays silent, produces
+// no command, sets no status, and never panics.
+func TestEWithNoSelectionIsNoop(t *testing.T) {
+	t.Setenv("EDITOR", "vim --wait")
+
+	cases := []struct {
+		name  string
+		items []Item
+		mut   func(m *Model)
+	}{
+		{"empty list", nil, nil},
+		{"nil doc", []Item{{Doc: nil}}, nil},
+		{"empty path", []Item{{Doc: &model.Document{Title: "alpha"}}}, nil},
+		{"cursor out of range", []Item{mkItem("a.md", "alpha")}, func(m *Model) { m.cursor = 99 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewModelWithFilter(tc.items, Config{}, substringStub)
+			if tc.mut != nil {
+				tc.mut(&m)
+			}
+
+			m, cmd := applyKeyCmd(m, runeKey('e'))
+
+			if cmd != nil {
+				t.Fatalf("expected no command without a focused file, got %v", cmd)
+			}
+			if got := m.Status(); got != "" {
+				t.Fatalf("expected no status without a focused file, got %q", got)
+			}
+			if m.IsAborted() {
+				t.Fatal("a no-op e must not abort the picker")
+			}
+			_ = m.View()
+		})
+	}
+}
+
+// With a usable $EDITOR, `e` builds a suspend-and-run command for the focused
+// document. The command is only inspected here, never executed.
+func TestEWithEditorReturnsExecCmd(t *testing.T) {
+	t.Setenv("EDITOR", "vim --wait")
+	items := []Item{mkItem("a.md", "alpha"), mkItem("b.md", "beta")}
+	m := NewModelWithFilter(items, Config{}, substringStub)
+	m = applyKey(m, key(tea.KeyDown))
+
+	m, cmd := applyKeyCmd(m, runeKey('e'))
+
+	if cmd == nil {
+		t.Fatal("expected an exec command with a usable $EDITOR")
+	}
+	if got := m.Status(); got != "" {
+		t.Fatalf("expected no status with a usable $EDITOR, got %q", got)
+	}
+	if m.IsAborted() {
+		t.Fatal("opening the editor must not abort the picker")
+	}
 }

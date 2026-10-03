@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"regexp"
 	"sort"
@@ -232,9 +234,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // up/down or ctrl-k/ctrl-j navigate, enter confirm, esc clears a non-empty
 // query before aborting, ctrl-c abort, tab toggle multi-select, ctrl-a toggle
 // archived, ctrl-p toggle preview, ctrl-f toggle the frontmatter panel,
-// ctrl-o open the previewed document's first web link, and `/` reveals and
-// focuses the search bar. Every other key is dropped before it can reach the
-// hidden text input.
+// ctrl-o open the previewed document's first web link, `/` reveals and
+// focuses the search bar, and `e` opens the focused document in $EDITOR.
+// Every other key is dropped before it can reach the hidden text input.
 func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.status = ""
 	switch msg.String() {
@@ -308,10 +310,12 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ensureVisible()
 			return m, m.input.Focus()
 		}
+	case "e":
+		return m.openInEditor()
 	}
 	// List mode handles only the allowlist above; unmapped keys (printable
-	// runes, editing keys, `e` until it is bound) are dropped, never forwarded
-	// to the hidden text input.
+	// runes, editing keys) are dropped, never forwarded to the hidden text
+	// input.
 	return m, nil
 }
 
@@ -391,6 +395,49 @@ func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.refilter()
 	}
 	return m, cmd
+}
+
+// editorArgv builds the full editor argv for path from the $EDITOR string:
+// whitespace-separated fields with the editor binary first and the path
+// appended last. It is pure (no lookup or exec) and shell quoting is not
+// supported, matching the tasks TUI and `mdfu task open`.
+func editorArgv(editor, path string) ([]string, error) {
+	fields := strings.Fields(editor)
+	if len(fields) == 0 {
+		return nil, errors.New("$EDITOR is not set")
+	}
+	return append(append([]string{}, fields...), path), nil
+}
+
+// editorCommand builds the $EDITOR process for path; it never starts it.
+func editorCommand(editor, path string) (*exec.Cmd, error) {
+	argv, err := editorArgv(editor, path)
+	if err != nil {
+		return nil, err
+	}
+	return exec.Command(argv[0], argv[1:]...), nil
+}
+
+// openInEditor suspends the picker to open the focused document in $EDITOR.
+// Without a focusable file it is a silent no-op; without a usable $EDITOR it
+// reports through the status bar and keeps the picker open.
+func (m Model) openInEditor() (tea.Model, tea.Cmd) {
+	if len(m.filtered) == 0 || m.cursor < 0 || m.cursor >= len(m.filtered) {
+		return m, nil
+	}
+	doc := m.filtered[m.cursor].Doc
+	if doc == nil || doc.Path == "" {
+		return m, nil
+	}
+	c, err := editorCommand(os.Getenv("EDITOR"), doc.Path)
+	if err != nil {
+		m.status = err.Error()
+		return m, nil
+	}
+	path := doc.Path
+	return m, tea.ExecProcess(c, func(err error) tea.Msg {
+		return editorFinishedMsg{path: path, err: err}
+	})
 }
 
 // View implements tea.Model.
