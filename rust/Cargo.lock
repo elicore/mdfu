@@ -883,6 +883,7 @@ dependencies = [
  "mdfu-core",
  "mdfu-tui",
  "predicates",
+ "ratatui",
 ]
 
 [[package]]
