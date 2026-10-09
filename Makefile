@@ -6,7 +6,7 @@
 
 ACT_LOCAL := ./scripts/act-local.sh
 
-.PHONY: help act-setup act-list act-ci act-rust act-module-guard act-docs act-release-check act-all
+.PHONY: help act-setup act-list act-ci act-rust act-module-guard act-docs act-release-check act-all parity
 
 help:
 	@$(ACT_LOCAL) --help
@@ -42,3 +42,7 @@ act-release-check:
 ## Run every locally-runnable workflow.
 act-all:
 	@$(ACT_LOCAL) all
+
+## Run the Go-vs-Rust differential parity harness (builds the frozen-SHA Go binary).
+parity:
+	@./scripts/parity.sh

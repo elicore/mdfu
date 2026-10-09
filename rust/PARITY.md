@@ -146,3 +146,83 @@ stderr prefix), D2 (unknown token after `mdfu task` is a fuzzy search), D3
 - Checker concept (`.omo/evidence/task-1-check.sh`): fail if any inventory row
   is missing `normative`, `relaxed`, or `dropped`, and fail if the row count is
   below the test-file count.
+
+## Differential parity harness (todo 32)
+
+`scripts/parity.sh` builds the Go binary from the frozen baseline SHA above
+(via `git archive`, so the Go tree is never modified), builds the Rust release
+binary, and runs `rust/crates/mdfu-cli/tests/parity.rs` against both binaries.
+`make parity` is the target; `scripts/parity.sh --mutate` appends one stdout
+byte inside a Go-binary shim and asserts the harness reports `PARITY-DIFF`.
+
+Covered surface, all byte-exact (stdout, stderr, exit code, and the vault files
+the command rewrote):
+
+- Note filter over `testdata/` and a synthetic notes vault:
+  `--format paths|json|vimgrep`; queries `kumquat zebra`, `kumquat`,
+  `type:Metric`, `tag:retention`, `tags:growth,kpi`, `tag:-kpi`,
+  `status:verified`, `created:A..B`, `bold` (HTML escaping), `durian`
+  (filename fallback); flags `--archived`, `--hidden`, `--no-ignore`,
+  `--limit 0/3/-1`; the zero-result, invalid-date, and invalid-format exit
+  rows.
+- Task subcommands in non-TTY mode over `testdata/tasks/` and a synthetic
+  vault (`.mdfurc` exclude rules, `_archive.md`, seed and duplicate IDs):
+  `list` (+ `--all`, `--blocked`, `--tag`, `--priority`, `--sort`, `--json`),
+  `view` (+ `--json`), `set`, `ids`, `archive`, `validate`, and `mdfu tasks`.
+
+Coverage record: 33 note-filter cases + 33 task cases (66 differential cases)
+in 6 tests; the separate tests prove the score normalization is the only raw
+note-JSON difference, that the comparator detects a one-byte tamper in each
+compared dimension, that the missing-root divergence is recorded here, and
+that this document keeps the exclusion list above. Evidence:
+`.omo/evidence/task-32-rust-port-ratatui.diff`.
+
+### Non-testable surfaces (exact list)
+
+The harness deliberately does not compare the following; they need a real
+terminal or assert Go-library-internal bytes with no Rust analog, and remain
+covered only by the relaxed rows in the inventory above:
+
+- **TTY box bytes**: the exact Unicode box-drawing glyphs and column padding of
+  the `task list`/`tasks` table when attached to a TTY (`internal/task/list_test.go`
+  and `render_test.go` relaxations). Non-TTY output contains no box frame, and
+  the §D row content/order and the no-ANSI-when-piped rule stay normative.
+- **SGR-exact output**: every exact ANSI SGR sequence (the `view` `file:line`
+  prefix `ESC[38;5;245m`, task done/tag/priority colors, theme and lipgloss
+  styles). Non-TTY output contains no SGR; the harness compares those bytes
+  instead.
+- **Interactive TUI**: the note picker and task TUI event loops, alternate
+  screen, key handling, and rendered frames. Running either TUI without a TTY
+  fails before any comparable output (both binaries try `/dev/tty`), so the
+  harness never launches it.
+
+Everything else on the covered surface is compared raw.
+
+### Harness normalization (complete list)
+
+Exactly one normalization is applied, to note-filter `--format json` stdout:
+
+- `"score": 0,` (Go `encoding/json`: float64 zero renders as `0`) is compared
+  as `"score": 0.0,` (Rust `serde_json` renders `0.0`). Source:
+  `cmd/mdfu/pipeline.go` and `rust/crates/mdfu-cli/src/pipeline.rs` always set
+  `Score: 0`; the value is constant and only its float rendering differs.
+  `parity_note_json_score_normalization_is_the_only_difference` proves the raw
+  outputs differ *only* on lines containing `"score"`.
+
+Task JSON needs no normalization: `task list --json` and `task view --json`
+are byte-identical including the trailing newline.
+
+### Known output divergences (recorded, not normalized)
+
+- `--limit -1` (space form): Go's `flag` package accepts the negative value;
+  clap treats `-1` as an unexpected argument and exits 2. `--limit=-1` is
+  byte-identical in both. This extends the task-28 root flag-parsing
+  divergence; the harness uses the `=` form.
+- Missing scan root stderr: Go `mdfu: lstat <root>: no such file or directory`
+  vs Rust `mdfu: <root>: IO error for operation on <root>: No such file or
+  directory (os error 2)`. Exit 1, empty stdout, and the `mdfu: ` prefix are
+  identical; only the OS-error sentence differs (`os.Lstat` vs the `ignore`
+  crate). Asserted by `parity_missing_root_is_a_documented_divergence`.
+- CLI usage-error wording, help stream, and single-dash long flags (clap vs Go
+  `flag`), recorded in task 28. The harness only covers the custom
+  `--format` usage message, which is byte-identical.
