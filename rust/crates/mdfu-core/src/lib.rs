@@ -7,6 +7,7 @@
 pub mod model;
 pub mod open;
 pub mod output;
+pub mod parse;
 pub mod scan;
 pub mod theme;
 
