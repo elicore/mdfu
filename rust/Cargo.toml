@@ -1,0 +1,27 @@
+# Cargo workspace for the mdfu Rust port.
+#
+# Layout (locked by PLAN): core content/logic, ratatui UI, and the `mdfu`
+# binary. The Go implementation stays the reference until cutover.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/mdfu-core",
+    "crates/mdfu-tui",
+    "crates/mdfu-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/elicore/mdfu"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"

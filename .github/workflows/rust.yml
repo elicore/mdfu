@@ -1,0 +1,43 @@
+name: rust
+
+# Rust workspace CI for the in-progress port. Go stays in ci.yml; this workflow
+# only runs when the Rust workspace changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - "Cargo.*"
+  pull_request:
+    paths:
+      - "rust/**"
+      - "Cargo.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: rust
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.1"
+          components: rustfmt, clippy
+      - name: fmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: test
+        run: cargo test
+      - name: build
+        run: cargo build --release

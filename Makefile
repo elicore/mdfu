@@ -6,7 +6,7 @@
 
 ACT_LOCAL := ./scripts/act-local.sh
 
-.PHONY: help act-setup act-list act-ci act-module-guard act-docs act-release-check act-all
+.PHONY: help act-setup act-list act-ci act-rust act-module-guard act-docs act-release-check act-all
 
 help:
 	@$(ACT_LOCAL) --help
@@ -22,6 +22,10 @@ act-list:
 ## Run CI: gofmt, vet, race tests, coverage, cross-build matrix.
 act-ci:
 	@$(ACT_LOCAL) ci
+
+## Run the Rust workspace checks: fmt, clippy, tests, release build.
+act-rust:
+	@$(ACT_LOCAL) rust
 
 ## Run the single-module layout guard.
 act-module-guard:

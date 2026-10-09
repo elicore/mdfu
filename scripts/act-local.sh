@@ -9,6 +9,7 @@
 #
 #   ./scripts/act-local.sh list
 #   ./scripts/act-local.sh ci
+#   ./scripts/act-local.sh rust
 #   ./scripts/act-local.sh module-guard
 #   ./scripts/act-local.sh docs
 #   ./scripts/act-local.sh release-check
@@ -21,9 +22,10 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-RUNNABLE=(ci module-guard docs release-check)
+RUNNABLE=(ci rust module-guard docs release-check)
 declare -A WORKFLOW=(
   [ci]=".github/workflows/ci.yml"
+  [rust]=".github/workflows/rust.yml"
   [module-guard]=".github/workflows/module-guard.yml"
   [docs]=".github/workflows/docs.yml"
   [release-check]=".github/workflows/release-check.yml"
@@ -31,6 +33,7 @@ declare -A WORKFLOW=(
 # release-check only triggers on pull_request/workflow_dispatch; the rest push.
 declare -A EVENT=(
   [ci]="push"
+  [rust]="push"
   [module-guard]="push"
   [docs]="push"
   [release-check]="pull_request"
@@ -47,6 +50,7 @@ Usage: $(basename "$0") [command]
 Commands:
   list           List all workflows/jobs act can see
   ci             Run CI (test + cross-build matrix)
+  rust           Run the Rust workspace CI (fmt, clippy, tests, release build)
   module-guard   Run single-module layout guard
   docs           Build the Starlight site + offline internal link check
   release-check  Run GoReleaser snapshot build
@@ -177,7 +181,7 @@ main() {
   FAILED=0
 
   case "$cmd" in
-    ci | module-guard | docs | release-check)
+    ci | rust | module-guard | docs | release-check)
       run_workflow "$cmd"
       ;;
     all)
