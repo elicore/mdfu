@@ -1,11 +1,17 @@
 //! Task engine types and grammar (`mdtask`-compatible).
 //!
-//! First slice of the `internal/task` port: [`Task`], [`Unidentified`], and
-//! the header grammar in [`grammar`]. Body extraction, ID assignment,
-//! discovery, rendering, editing, and the command layer land in follow-up
-//! submodules (`body`, `id`, `discover`, `render`, `edit`, `cli`).
+//! Ported slices: [`Task`], [`Unidentified`], the header grammar in
+//! [`grammar`], task configuration in [`config`], the `**` glob subset in
+//! [`glob`], and scope discovery in [`discover`]. Body extraction, ID
+//! assignment, rendering, editing, and the command layer land in follow-up
+//! submodules (`body`, `id`, `render`, `edit`, `cli`).
 
+pub mod body;
+pub mod config;
+pub mod discover;
+pub mod glob;
 pub mod grammar;
+pub mod id;
 
 use std::collections::BTreeMap;
 
