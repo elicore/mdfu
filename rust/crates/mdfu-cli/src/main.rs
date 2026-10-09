@@ -28,6 +28,7 @@ use mdfu_core::theme::{self, Theme};
 
 mod pipeline;
 mod router;
+mod tasks_runner;
 
 /// Version source for `--version`: the Cargo workspace version, which
 /// release-please owns. (Go sets `main.version` through `-ldflags`.)

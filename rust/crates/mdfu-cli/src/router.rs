@@ -165,7 +165,7 @@ pub fn maybe_route_task(
     };
     let mut hook =
         |stdout: &mut dyn Write, stderr: &mut dyn Write, args: &[String], config: &str| {
-            run_tasks_tui(stdout, stderr, args, config)
+            crate::tasks_runner::run_tasks_tui(stdout, stderr, args, config)
         };
     route(&args, &mut host, &mut hook)
 }
@@ -200,26 +200,6 @@ fn route(
         ))),
         Decision::Filter { query } => Some(RouteOutcome::Filter(query)),
     }
-}
-
-/// Default TTY `tasks` entry point (Go's `runTasksTUI` default).
-///
-/// Todo 32 replaces this stub with the interactive tasks UI: resolve the same
-/// selection flags as `list`, load the checkboxes, and hand the rows to
-/// `mdfu-tui`. Until then the TTY branch reports that it is not wired, like
-/// the filter/TUI stubs in `main.rs`.
-fn run_tasks_tui(
-    stdout: &mut dyn Write,
-    stderr: &mut dyn Write,
-    args: &[String],
-    config: &str,
-) -> i32 {
-    let _ = (stdout, args, config);
-    let _ = writeln!(
-        stderr,
-        "mdfu tasks: interactive mode is not implemented yet (todo 32)"
-    );
-    1
 }
 
 /// Scans `args` and returns the routing decision without side effects.
