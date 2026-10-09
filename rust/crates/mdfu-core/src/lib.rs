@@ -10,6 +10,7 @@ pub mod output;
 pub mod parse;
 pub mod query;
 pub mod scan;
+pub mod search;
 pub mod theme;
 
 /// The workspace version of `mdfu-core`.
