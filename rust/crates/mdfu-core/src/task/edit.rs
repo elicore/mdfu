@@ -692,8 +692,9 @@ fn preflight_archive(base_dir: &str, archive_path: &str) -> Result<(), EditError
 }
 
 /// Reports whether `target` escapes `base` under Go `filepath.Rel` semantics:
-/// mismatched absolute/relative forms or a target that does not sit under the
-/// base's lexical prefix both yield a `..`-prefixed relative path.
+/// mismatched absolute/relative forms, a target that does not sit under the
+/// base's lexical prefix, or a base with no components (`.`/`..`) whose
+/// relative result starts with `..` all yield a `..`-prefixed relative path.
 fn outside_base(base: &str, target: &str) -> bool {
     let base = go_clean(base);
     let target = go_clean(target);
@@ -707,7 +708,7 @@ fn outside_base(base: &str, target: &str) -> bool {
         .zip(&target_parts)
         .take_while(|(left, right)| left == right)
         .count();
-    common != base_parts.len()
+    common != base_parts.len() || target_parts.get(common) == Some(&"..")
 }
 
 /// Splits a cleaned path into its non-empty, non-`.` components.

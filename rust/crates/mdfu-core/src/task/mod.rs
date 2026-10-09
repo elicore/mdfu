@@ -3,12 +3,13 @@
 //! Ported slices: [`Task`], [`Unidentified`], the header grammar in
 //! [`grammar`], body extraction in [`body`], ID assignment in [`id`], blocker
 //! resolution in [`blocker`], task configuration in [`config`], the `**` glob
-//! subset in [`glob`], scope discovery in [`discover`], and list/view rendering
-//! in [`render`]. Editing and the command layer land in follow-up submodules
-//! (`edit`, `cli`).
+//! subset in [`glob`], scope discovery in [`discover`], list/view rendering in
+//! [`render`], atomic file writing in [`edit`], scope assembly in [`scope`],
+//! and the nine subcommands in [`cli`].
 
 pub mod blocker;
 pub mod body;
+pub mod cli;
 pub mod config;
 pub mod discover;
 pub mod edit;
@@ -16,6 +17,7 @@ pub mod glob;
 pub mod grammar;
 pub mod id;
 pub mod render;
+pub mod scope;
 
 use std::collections::BTreeMap;
 

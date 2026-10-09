@@ -258,7 +258,7 @@ fn relative_slash(base: &str, path: &str) -> String {
 /// Lexical relative path with Go `filepath.Rel` semantics on Unix. Returns
 /// `None` when one path is absolute and the other relative, or when the base
 /// would have to climb through its own `..` prefix.
-fn go_rel(base: &str, target: &str) -> Option<String> {
+pub(crate) fn go_rel(base: &str, target: &str) -> Option<String> {
     let base = go_clean(base);
     let target = go_clean(target);
     if base == target {

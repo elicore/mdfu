@@ -241,6 +241,68 @@ pub fn is_meta_token(word: &str) -> bool {
     TAG_RE.is_match(word) || PRIORITY_RE.is_match(word) || PROPERTY_RE.is_match(word)
 }
 
+/// Reports whether `word` is a tag token (`#` then a letter then word
+/// characters).
+#[must_use]
+pub fn is_tag_token(word: &str) -> bool {
+    TAG_RE.is_match(word)
+}
+
+/// Reports whether `word` is a priority token (`!` then a letter then word
+/// characters).
+#[must_use]
+pub fn is_priority_token(word: &str) -> bool {
+    PRIORITY_RE.is_match(word)
+}
+
+/// Returns the key of a property token (`@key:value`), or `None` when `word`
+/// is not one.
+#[must_use]
+pub fn property_key_of(word: &str) -> Option<String> {
+    PROPERTY_RE.captures(word).map(|caps| caps[1].to_string())
+}
+
+/// Splits a strict header line into the Go `headerRe` capture groups:
+/// `(checkbox status, ID prefix with its trailing space, remainder)`.
+///
+/// The line is matched verbatim (no trailing `\r` is stripped first, unlike
+/// [`parse_header`]), because the `set` and `validate` command layers rewrite
+/// or report the raw source text.
+#[must_use]
+pub fn header_parts(line: &str) -> Option<(char, String, String)> {
+    let caps = HEADER_RE.captures(line)?;
+    let status = caps.get(1)?.as_str().chars().next()?;
+    let id_part = caps
+        .get(2)
+        .map_or(String::new(), |m| m.as_str().to_string());
+    let rest = caps
+        .get(3)
+        .map_or(String::new(), |m| m.as_str().to_string());
+    Some((status, id_part, rest))
+}
+
+/// Extracts the raw metadata portion of a header line for `validate`.
+///
+/// Mirrors Go `validateHeaderMeta`: a seed prefix is dropped, then the split
+/// keeps unknown words the way [`split_meta_sep`] does. Unlike
+/// [`parse_header`], the line is not `\r`-stripped first, so a CRLF remainder
+/// reaches the split exactly as Go sees it.
+#[must_use]
+pub fn header_meta(line: &str) -> String {
+    let Some((_, id_part, mut rest)) = header_parts(line) else {
+        return String::new();
+    };
+    if id_part.is_empty() {
+        if let Some(seed) = SEED_RE.captures(&rest) {
+            rest = seed
+                .get(2)
+                .map_or(String::new(), |m| m.as_str().to_string());
+        }
+    }
+    let (_, meta, _) = split_meta_sep(&rest);
+    meta
+}
+
 /// Serializes a task back to a header line.
 ///
 /// For a task straight from [`parse_header`] and unmodified, this is
