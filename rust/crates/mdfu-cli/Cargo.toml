@@ -17,8 +17,10 @@ workspace = true
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 mdfu-core = { path = "../mdfu-core" }
-# Wired into interactive mode by todo 30 (note picker + injected filter).
 mdfu-tui = { path = "../mdfu-tui" }
+# Terminal setup + event loop driver for the interactive picker. Must match the
+# version mdfu-tui uses so `Terminal<CrosstermBackend<Stdout>>` is one type.
+ratatui = "0.30.2"
 
 [dev-dependencies]
 assert_cmd = "2"

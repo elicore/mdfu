@@ -4,13 +4,13 @@
 //! exit-code contract (`0` success, `1` runtime error, `2` usage error) from
 //! `internal/task/SPEC.md` §I. The Go reference is `cmd/mdfu/main.go`.
 //!
-//! Two extension points are deliberately stubbed in this change:
+//! The `mdfu task` / `mdfu tasks` pre-parser lives in the `router` module and
+//! runs before clap on the raw arguments; it is deliberately not a clap
+//! subcommand (todo 29).
 //!
-//! - [`maybe_route_task`]: the hand-written `mdfu task` / `mdfu tasks`
-//!   pre-parser (todo 29). It runs before clap on the raw arguments and must
-//!   never become a clap subcommand.
-//! - [`run_filter`] / [`run_tui`]: the filter pipeline and interactive picker
-//!   wiring (todo 30).
+//! The filter pipeline and interactive picker wiring live in the `pipeline`
+//! module; [`run_filter`] and [`run_tui`] below are thin adapters from the
+//! parsed root flags into it.
 //!
 //! The theme is resolved only for the TUI path via [`theme::resolve`]
 //! (explicit `--config` > `$MDFU_CONFIG` > discovered XDG file > builtin
@@ -25,6 +25,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use mdfu_core::theme::{self, Theme};
+
+mod pipeline;
+mod router;
 
 /// Version source for `--version`: the Cargo workspace version, which
 /// release-please owns. (Go sets `main.version` through `-ldflags`.)
@@ -112,10 +115,13 @@ where
 {
     let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
 
-    // Todo 29 hook: the task router inspects the raw arguments before clap
-    // sees them (`cmd/mdfu/task.go:153-205`).
-    if let Some(code) = maybe_route_task(&args, stdout, stderr) {
-        return code;
+    // The task router inspects the raw arguments before clap sees them
+    // (`cmd/mdfu/task.go:153-205`).
+    if let Some(outcome) = router::maybe_route_task(&args, stdout, stderr) {
+        return match outcome {
+            router::RouteOutcome::Handled(code) => code,
+            router::RouteOutcome::Filter(query) => run_filter_fallthrough(&query, stdout, stderr),
+        };
     }
 
     let cli = match Cli::try_parse_from(
@@ -161,24 +167,28 @@ where
     run_tui(&cli, tui_limit(cli.limit), &theme, stdout, stderr)
 }
 
-/// Task-router extension point (todo 29).
-///
-/// Returns `None` so every invocation falls through to the root CLI; the
-/// hand-written `mdfu task` / `mdfu tasks` router lands in a follow-up change
-/// and must keep running before clap with the raw, program-name-less args.
-fn maybe_route_task(
-    _args: &[OsString],
-    _stdout: &mut dyn Write,
-    _stderr: &mut dyn Write,
-) -> Option<i32> {
-    None
+/// Runs the D2 fall-through query in filter mode with Go's fixed defaults:
+/// `runFilter(stdout, stderr, ".", false, true, query, false,
+/// defaultFilterLimit, "paths")` (`cmd/mdfu/task.go:224-225`).
+fn run_filter_fallthrough(query: &str, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let cli = Cli {
+        root: PathBuf::from("."),
+        hidden: false,
+        no_ignore: false,
+        limit: None,
+        format: "paths".to_string(),
+        archived: false,
+        no_hyperlinks: false,
+        config: None,
+        version: false,
+        query: vec![query.to_string()],
+    };
+    let limit = filter_limit(cli.limit);
+    run_filter(&cli, query, limit, stdout, stderr)
 }
 
-/// Non-interactive filter mode (`mdfu <query>`).
-///
-/// Todo 30 fills in the pipeline: load documents (scan -> parse), rank, map
-/// results, format, and exit 1 when nothing matches. This skeleton only
-/// proves dispatch reached the extension point.
+/// Non-interactive filter mode (`mdfu <query>`): adapts the parsed root flags
+/// to the shared pipeline in [`pipeline::run_filter`].
 fn run_filter(
     cli: &Cli,
     query: &str,
@@ -186,15 +196,20 @@ fn run_filter(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let _ = (cli, query, limit, stdout);
-    let _ = writeln!(stderr, "mdfu: filter mode is not implemented yet (todo 30)");
-    1
+    let root = cli.root.to_string_lossy();
+    pipeline::run_filter(
+        &pipeline_options(cli, &root, limit),
+        query,
+        &cli.format,
+        stdout,
+        stderr,
+    )
 }
 
-/// Interactive TUI mode (no positional query).
-///
-/// Todo 30 wires `load_documents` and the note picker; the theme is resolved
-/// by the caller and injected here, never read from a global.
+/// Interactive TUI mode (no positional query): adapts the parsed root flags to
+/// [`pipeline::run_tui`]. The theme is resolved by the caller and injected
+/// here, never read from a global; `$EDITOR` is read from the process
+/// environment so the picker crate stays env-agnostic.
 fn run_tui(
     cli: &Cli,
     limit: i64,
@@ -202,12 +217,28 @@ fn run_tui(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32 {
-    let _ = (cli, limit, theme, stdout);
-    let _ = writeln!(
+    let root = cli.root.to_string_lossy();
+    let editor = std::env::var("EDITOR").ok();
+    pipeline::run_tui(
+        &pipeline_options(cli, &root, limit),
+        theme,
+        cli.no_hyperlinks,
+        editor.as_deref(),
+        stdout,
         stderr,
-        "mdfu: interactive mode is not implemented yet (todo 30)"
-    );
-    1
+    )
+}
+
+/// Builds [`pipeline::Options`] from the parsed root flags and a resolved
+/// result cap; the adapter's single mapping from `Cli` to pipeline input.
+fn pipeline_options<'a>(cli: &Cli, root: &'a str, limit: i64) -> pipeline::Options<'a> {
+    pipeline::Options {
+        root,
+        include_hidden: cli.hidden,
+        respect_gitignore: !cli.no_ignore,
+        include_archived: cli.archived,
+        limit,
+    }
 }
 
 /// Effective `--limit` for filter mode: an explicit value wins, otherwise the
