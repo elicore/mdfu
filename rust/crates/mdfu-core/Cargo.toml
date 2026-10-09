@@ -19,3 +19,9 @@ yaml_serde = "0.10"
 
 [dev-dependencies]
 tempfile = "3"
+
+# Timed (non-libtest) harness: cold scan+parse and per-keystroke query+rank
+# p50/p95 over a deterministic synthetic 5k-file vault (PLAN budgets).
+[[bench]]
+name = "scan_rank"
+harness = false
