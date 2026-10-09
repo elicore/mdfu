@@ -17,14 +17,17 @@
 //!   (`ctrl+c` always aborts).
 //! - `tab` toggles multi-selection, `ctrl+a` archived visibility, `ctrl+p`
 //!   the preview pane, `ctrl+f` the frontmatter panel, `ctrl+o` the first web
-//!   link, `enter` confirms, and `e` runs the injected `$EDITOR` flow.
+//!   link, `enter` confirms, and `e` runs the injected `$EDITOR` flow through
+//!   [`exec_editor`] (suspend, run, resume, reload).
 //!
 //! Preview-pane wiring (markdown body window, side-by-side layout) is owned by
 //! the follow-up preview integration; this module only tracks `show_preview`
 //! and renders the list/search/status frame.
 
 mod app;
+mod editor;
 mod view;
 
 pub use app::{default_filter, editor_argv, App, Cmd, Config, FilterFn, Msg, ReloadFn};
+pub use editor::exec_editor;
 pub use view::{SEARCH_PLACEHOLDER, SEARCH_PROMPT};

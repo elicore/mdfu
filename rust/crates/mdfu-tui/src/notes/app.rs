@@ -80,7 +80,9 @@ pub enum Cmd {
     /// Open a URL in the browser (`ctrl+o`).
     OpenUrl(String),
     /// Suspend and run the editor with this argv (`e`), then feed back a
-    /// [`Msg::EditorFinished`].
+    /// [`Msg::EditorFinished`]. Run it through
+    /// [`exec_editor`](crate::notes::exec_editor), which suspends the terminal,
+    /// waits for the editor, and resumes.
     ExecEditor(Vec<String>),
 }
 
