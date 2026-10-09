@@ -260,6 +260,28 @@ impl TaskDetail {
     }
 }
 
+/// Snapshot of the task editor frame: the editor buffer plus the metadata the
+/// side panel shows.
+///
+/// The header is parsed by the command layer, never by a widget: `meta` holds
+/// the already-parsed `(label, value)` preview rows, `body_indent` the raw
+/// indent the body editor reports, and `is_body` selects the body-editor
+/// frame.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TaskEditor {
+    /// Editor buffer content, newline-separated.
+    pub text: String,
+    /// Parsed header preview rows (`ID`, `Status`, ...); empty for the body
+    /// editor.
+    pub meta: Vec<(String, String)>,
+    /// Whether the frame is the body editor.
+    pub is_body: bool,
+    /// Raw body indent shown in the body editor's status, e.g. `"  "`.
+    pub body_indent: String,
+    /// Transient status message appended to the hints; empty hides it.
+    pub status: String,
+}
+
 /// Plain-data status line for both TUIs.
 ///
 /// `line()` reproduces the Go `renderStatus` / `renderTaskFooter` text; a

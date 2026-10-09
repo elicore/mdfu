@@ -1,12 +1,13 @@
 //! Terminal user interface for `mdfu` (note picker and task views).
 //!
-//! Skeleton only so far: [`view_model`] defines the plain-data boundary the
-//! ratatui widgets will render from; the widgets themselves land in follow-up
-//! changes.
+//! [`view_model`] defines the plain-data boundary widgets render from;
+//! [`widgets`] is the reusable ratatui widget layer built on top of it.
 
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
+pub mod links;
 pub mod view_model;
+pub mod widgets;
 
 /// The version of `mdfu-core` this UI is built against.
 #[must_use]
