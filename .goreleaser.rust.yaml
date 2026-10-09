@@ -1,0 +1,87 @@
+# GoReleaser configuration for the Rust implementation of `mdfu`.
+#
+# Added alongside the Go `.goreleaser.yaml` (todo 34); the cutover that makes
+# this the published config is todo 36. Artifact naming must stay identical to
+# the Go path so `Casks/mdfu.rb` keeps pointing at real assets:
+#
+#   mdfu_<version>_<os>_<arch>.tar.gz   (zip on Windows)
+#
+# GoReleaser's Rust builder requires rustup (it runs `rustup target add`),
+# zig and cargo-zigbuild. The before hook installs cargo-zigbuild; rustup and
+# zig must already be on PATH (CI installs all three; see rust-release.yml).
+version: 2
+
+project_name: mdfu
+
+before:
+  hooks:
+    - cargo install --locked cargo-zigbuild
+
+builds:
+  - id: mdfu
+    builder: rust
+    binary: mdfu
+    # Cargo workspace root; the workspace has three members, so the CLI crate
+    # must be selected explicitly (GoReleaser also enforces this).
+    dir: rust
+    flags:
+      - --release
+      - --package=mdfu-cli
+    targets:
+      - x86_64-unknown-linux-gnu
+      - aarch64-unknown-linux-gnu
+      - x86_64-apple-darwin
+      - aarch64-apple-darwin
+      - x86_64-pc-windows-gnu
+      - aarch64-pc-windows-gnullvm
+
+archives:
+  - id: mdfu
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - PLAN.md
+
+checksum:
+  name_template: checksums.txt
+
+homebrew_casks:
+  - name: mdfu
+    ids:
+      - mdfu
+    binaries:
+      - mdfu
+    directory: Casks
+    homepage: https://github.com/elicore/mdfu
+    description: Fuzzy finder for Markdown notes
+    skip_upload: auto
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }} [skip ci]"
+    repository:
+      owner: elicore
+      name: mdfu
+      branch: main
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  draft: false
+  use_existing_draft: true
+  mode: keep-existing
+  prerelease: auto
