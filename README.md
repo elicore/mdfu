@@ -2,7 +2,9 @@
 
 Fuzzy finder for Markdown notes — body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`mdfu <query>`, fzf-compatible).
 
-Requires Go 1.25+.
+Requires Go 1.25+. A Rust port lives under `rust/` (Rust 1.98.1, pinned in
+`rust/rust-toolchain.toml`); the Go implementation stays the reference until
+cutover.
 
 ## Install
 
@@ -83,6 +85,27 @@ recognition rules and per-action behaviour.
 go build ./... && go test ./...
 ```
 
+### Rust port (in progress)
+
+A behavioral port of the Go tree lives in the `rust/` Cargo workspace: three
+crates, `mdfu-core` (scan/parse/query/rank/output), `mdfu-tui` (ratatui
+interface), and `mdfu-cli` (the `mdfu` binary). The Go tree stays the reference
+until cutover.
+
+```sh
+cd rust
+cargo build --release          # → rust/target/release/mdfu
+cargo test --workspace
+cargo fmt --check && cargo clippy --all-targets -- -D warnings
+```
+
+The port targets **behavioral parity**, not byte-identical task tables: non-TTY
+output (including `task list --json`) is byte-compatible, while TTY box-drawing
+glyphs and exact SGR styling are relaxed because they come from different UI
+libraries (Go lipgloss vs Rust ratatui). `rust/PARITY.md` is the parity
+contract; `make parity` runs the Go-vs-Rust differential harness against the
+frozen baseline.
+
 ### Local CI (run the GitHub Actions locally)
 
 Run the workflows under `.github/workflows/` on your machine with
@@ -111,9 +134,11 @@ on `main`; changes touching code, docs, or CI are validated locally first.
 ```sh
 make act-list          # list workflows/jobs act can run
 make act-ci            # gofmt, vet, race tests, coverage, cross-build matrix
+make act-rust          # Rust workspace: fmt, clippy, tests, release build
 make act-module-guard  # single-module layout guard
 make act-docs          # Starlight build + internal link check
-make act-release-check # GoReleaser snapshot
+make act-release-check # GoReleaser snapshot (Go)
+make parity            # Go-vs-Rust differential parity harness
 make act-all           # all of the above
 ```
 
@@ -123,7 +148,8 @@ are tested as CI would see them.
 
 These workflows cannot run locally — they need GitHub-hosted backends or a
 macOS runner: `codeql.yml`, `pages.yml` (deploy job), `release-please.yml`,
-`brew.yml`, and `release.yml` (requires a real tag). See the docs site's
+`brew.yml`, `release.yml` (requires a real tag), and `rust-release.yml` (needs
+`rustup` + `zig` + `cargo-zigbuild` in the act container). See the docs site's
 [Local CI](/mdfu/project/local-ci/) page for the full rationale.
 
 ## Docs

@@ -13,6 +13,15 @@ of any external tool: "byte-identical" always means byte-identical to *this*
 document, which is compared by automated table tests using literal expected
 strings.
 
+Scope of the byte-identical claim: it binds the **Go implementation** in
+`internal/task/` and `cmd/mdfu/`, whose tests assert the literal strings above.
+The Rust port under `rust/` targets **behavioral parity, not byte-identical
+output**: non-TTY output is byte-compatible, while TTY box-drawing glyphs and
+exact SGR sequences are relaxed because they come from different UI libraries.
+`rust/PARITY.md` is the authoritative contract for that port and classifies
+every Go test file as normative, relaxed, or dropped; consult it (not this
+document) for the Rust conformance policy.
+
 Normative keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are used in
 the RFC-2119 sense. All sizes are display cells measured with
 `lipgloss.Width`. All file paths in output are slash-separated and relative to

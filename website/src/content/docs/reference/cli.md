@@ -25,6 +25,35 @@ Flags may appear before or after the query (`mdfu "status:Draft" --limit 5`); `-
 
 Exit codes: `0` = ≥1 match, `1` = no match, `2` = usage error (e.g. bad `--format`).
 
+## Rust port
+
+The Rust binary (`rust/crates/mdfu-cli`) tracks the Go CLI for behavioral
+parity, not byte-for-byte identical UI. The notes below call out the surface
+differences; `rust/PARITY.md` is the full contract.
+
+- `--no-ignore`: accepted by both, and a no-op in both today. Neither binary
+  consults `.gitignore`, so gitignored files are returned by default (see
+  [Scan](/guide/scan/)); the flag exists for the planned behavior, not the
+  current one.
+- Filter `--format json`: `score` is a constant `0` in both, but the Go encoder
+  prints `"score": 0` while the Rust encoder prints `"score": 0.0`. The value is
+  never meaningful today (there is no scoring in filter mode).
+- Task `--json` output (`task list --json`, `task view --json`) ends with a
+  trailing newline in both. That is byte-identical, not a divergence. The
+  note-filter `--format json` output has no trailing newline.
+- `--limit -1` written as two tokens: Go's flag parser accepts the negative
+  value; Rust's clap treats `-1` as an unexpected argument and exits `2`. Use
+  the equals form, `--limit=-1`, which both accept.
+- Single-dash long flags: Go's flag parser also accepts `-format json`; Rust's
+  clap does not (exit `2`). Use the double-dash form.
+- Missing scan root: exit `1` with the `mdfu: ` prefix and empty stdout in both.
+  The OS-error sentence differs (`os.Lstat` in Go vs the `ignore` crate in Rust).
+- `--help`/`-h` exits `0` in both, but Go writes the help text to stderr and
+  Rust writes it to stdout. Usage-error wording differs between the two flag
+  parsers; the exit codes (`2`) match.
+- `--version` prints the version each build embeds: Go uses the `main.version`
+  `-ldflags` value, Rust uses the Cargo workspace version.
+
 ## Task commands
 
 Two additional entry points read and edit checkbox tasks in your Markdown
