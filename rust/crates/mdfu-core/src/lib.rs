@@ -4,6 +4,10 @@
 
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
+pub mod model;
+pub mod open;
+pub mod theme;
+
 /// The workspace version of `mdfu-core`.
 #[must_use]
 pub fn version() -> &'static str {

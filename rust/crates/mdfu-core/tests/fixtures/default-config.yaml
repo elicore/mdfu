@@ -1,0 +1,55 @@
+# mdfu configuration — builtin defaults.
+#
+# Copy this file to $XDG_CONFIG_HOME/mdfu/config.yaml (or pass it via --config
+# / $MDFU_CONFIG) and edit. Every key is optional: omitted keys keep the
+# builtin defaults shown here. Unknown keys are ignored, invalid enum values
+# keep the default, and numeric values are clamped to their supported range.
+
+# Glamour style for the preview body: dark | light (empty = auto).
+markdown_style: ""
+# Frontmatter block visible at startup (ctrl+f toggles it live).
+show_frontmatter: true
+# Body lines shown in the preview (1..200).
+body_lines: 30
+# Cursor row in the result list (bold).
+cursor_color: "212"
+# Multi-selected rows in the result list (bold).
+selected_color: "82"
+# Document title in the preview (bold).
+title_color: "212"
+# Filename header at the top of the preview.
+filename_color: "244"
+# Preview header style. Unset means bold + underline; setting a color adds it.
+# preview_header_color: "212"
+# Labels of the frontmatter rows.
+frontmatter_key_color: "245"
+# Faint rendering for dimmed text such as status hints.
+dim_faint: true
+# Tag/list pill text.
+pill_foreground: "231"
+# Tag/list pill background.
+pill_background: "62"
+# Pill border shape: none | round.
+pill_shape: round
+# Horizontal padding inside pills (0..2).
+pill_padding: 1
+# Query-match emphasis (bold, black on bright yellow).
+highlight_sgr: "1;30;103"
+# Hyperlink labels in the preview.
+link_sgr: "1;4;38;5;212"
+# Task row ID, e.g. PRJ-3.
+task_id_color: "245"
+# Completed task rows.
+task_done_color: "240"
+# Task priority marker.
+task_priority_color: "212"
+# Task tags.
+task_tag_color: "62"
+# Blocked task marker.
+task_blocker_color: "203"
+# Selected task row (bold).
+task_selected_color: "82"
+# Task pane border color.
+task_pane_border_color: "238"
+# Task pane border shape: none | rounded.
+task_pane_border: rounded
