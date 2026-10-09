@@ -7,7 +7,7 @@
 
 ACT_LOCAL := ./scripts/act-local.sh
 
-.PHONY: help act-setup act-list act-ci act-rust act-module-guard act-docs act-release-check act-all parity
+.PHONY: help act-setup act-list act-rust act-module-guard act-docs act-release-check act-all parity
 
 help:
 	@$(ACT_LOCAL) --help
@@ -20,15 +20,11 @@ act-setup:
 act-list:
 	@$(ACT_LOCAL) list
 
-## Run CI: gofmt, vet, race tests, coverage, cross-build matrix.
-act-ci:
-	@$(ACT_LOCAL) ci
-
 ## Run the Rust workspace checks: fmt, clippy, tests, release build.
 act-rust:
 	@$(ACT_LOCAL) rust
 
-## Run the Go module + Rust workspace layout guard.
+## Run the Rust workspace layout guard.
 act-module-guard:
 	@$(ACT_LOCAL) module-guard
 

@@ -8,7 +8,6 @@
 # still overlaid, so local edits are exercised.
 #
 #   ./scripts/act-local.sh list
-#   ./scripts/act-local.sh ci
 #   ./scripts/act-local.sh rust
 #   ./scripts/act-local.sh module-guard
 #   ./scripts/act-local.sh docs
@@ -25,9 +24,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-RUNNABLE=(ci rust module-guard docs)
+RUNNABLE=(rust module-guard docs)
 declare -A WORKFLOW=(
-  [ci]=".github/workflows/ci.yml"
   [rust]=".github/workflows/rust.yml"
   [module-guard]=".github/workflows/module-guard.yml"
   [docs]=".github/workflows/docs.yml"
@@ -35,7 +33,6 @@ declare -A WORKFLOW=(
 )
 # release-check only triggers on pull_request/workflow_dispatch; the rest push.
 declare -A EVENT=(
-  [ci]="push"
   [rust]="push"
   [module-guard]="push"
   [docs]="push"
@@ -52,9 +49,8 @@ Usage: $(basename "$0") [command]
 
 Commands:
   list           List all workflows/jobs act can see
-  ci             Run CI (Go test + cross-build matrix; kept until todo 37)
   rust           Run the Rust workspace CI (fmt, clippy, tests, release build)
-  module-guard   Run the Go module + Rust workspace layout guard
+  module-guard   Run the Rust workspace layout guard
   docs           Build the Starlight site + offline internal link check
   all            Run every locally-runnable workflow (default)
 
@@ -74,6 +70,7 @@ install_act() {
     log "brew install act"
     if brew install act; then return 0; fi
   fi
+  # Fallback for machines that have a Go toolchain (act itself is a Go binary).
   if command -v go >/dev/null 2>&1; then
     log "go install github.com/nektos/act@latest"
     GOBIN="${GOBIN:-$(go env GOPATH)/bin}" go install github.com/nektos/act@latest && return 0
@@ -127,8 +124,8 @@ make_context() {
 }
 
 act_args() {
-  # act shares the /opt/hostedtoolcache volume across concurrent jobs; multiple
-  # setup-go downloads racing corrupt it, so serialize.
+  # act shares the /opt/hostedtoolcache volume across concurrent jobs; racing
+  # toolchain downloads can corrupt it, so serialize.
   ACT_ARGS=(--rm --concurrent-jobs 1)
   case "$(uname -m)" in
     x86_64 | amd64) ACT_ARGS+=(--container-architecture linux/amd64) ;;
@@ -187,7 +184,7 @@ main() {
   FAILED=0
 
   case "$cmd" in
-    ci | rust | module-guard | docs)
+    rust | module-guard | docs)
       run_workflow "$cmd"
       ;;
     all)

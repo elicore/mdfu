@@ -45,7 +45,9 @@ fi
 head_sha="$(git rev-parse HEAD)"
 echo "parity: frozen baseline $sha"
 echo "parity: working HEAD    $head_sha"
-if git diff --quiet "$sha" "$head_sha" -- cmd internal tests go.mod go.sum; then
+if ! git cat-file -e "$head_sha:go.mod" 2>/dev/null; then
+  echo "parity: Go tree absent at HEAD (removed after the cutover); the frozen baseline archive is the reference"
+elif git diff --quiet "$sha" "$head_sha" -- cmd internal tests go.mod go.sum; then
   echo "parity: Go build inputs unchanged from baseline (cmd/ internal/ tests/ go.mod go.sum)"
 else
   echo "parity: WARNING Go build inputs differ from baseline; the baseline archive is still what gets built" >&2

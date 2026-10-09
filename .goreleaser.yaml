@@ -2,9 +2,10 @@
 #
 # Promoted from `.goreleaser.rust.yaml` in the todo-36 cutover: the Rust build
 # is now the release source for release.yml / release-check.yml / brew.yml /
-# release-please.yml. The Go tree remains the parity reference until todo 37,
-# but it is no longer a release gate. Artifact naming must stay identical to
-# the historical Go path so `Casks/mdfu.rb` keeps pointing at real assets:
+# release-please.yml. The Go implementation was removed after the parity gate
+# (todo 37) but remains the differential baseline (`make parity` builds it from
+# git history). Artifact naming must stay identical to the historical Go path
+# so `Casks/mdfu.rb` keeps pointing at real assets:
 #
 #   mdfu_<version>_<os>_<arch>.tar.gz   (zip on Windows)
 #

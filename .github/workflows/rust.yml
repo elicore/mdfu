@@ -1,18 +1,12 @@
 name: rust
 
-# Rust workspace CI for the in-progress port. Go stays in ci.yml; this workflow
-# only runs when the Rust workspace changes.
+# Rust workspace CI. The Rust crates are the implementation and the release
+# source since the todo-37 cutover, so this is the primary CI workflow.
 
 on:
   push:
     branches: [main]
-    paths:
-      - "rust/**"
-      - "Cargo.*"
   pull_request:
-    paths:
-      - "rust/**"
-      - "Cargo.*"
   workflow_dispatch:
 
 permissions:

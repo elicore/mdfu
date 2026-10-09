@@ -2,7 +2,7 @@
 
 ## Goal
 
-Single static Go binary `mdfu` for fuzzy-finding markdown by body free text, frontmatter values as free text, and attribute qualifiers. OKF v0.1/v0.2 + Portent/Tolaria via a unified normalized model.
+Single static Rust binary `mdfu` for fuzzy-finding markdown by body free text, frontmatter values as free text, and attribute qualifiers. OKF v0.1/v0.2 + Portent/Tolaria via a unified normalized model. Built from the `rust/` Cargo workspace; the Go implementation was removed after the parity gate (`rust/PARITY.md` records the frozen baseline).
 
 Details moved out of this file into the docs site (`website/src/content/docs/`,
 live at <https://elicore.github.io/mdfu/>):
@@ -21,6 +21,11 @@ live at <https://elicore.github.io/mdfu/>):
 
 ## Roadmap
 
+> T1–T8 were written for the Go implementation before the Rust port. T1/T2
+> measurements and T6 landed in Rust (see `reports/rust-port-perf.md`); the
+> entries below are kept as historical roadmap records. New work is tracked in
+> `.omo/plans/` and `rust/PARITY.md`.
+
 ### Now (P0 — indexless perf, must hold budgets)
 
 - [ ] **T1: Benchmark + profile current path.** 5k synthetic-file corpus; measure cold `scan+parse` and per-keystroke `query+rank`; CPU profile `search.scoreDoc` (`fuzzy.Find` per doc per word vs whole `SearchBlob`). Acceptance: numbers + p50/p95 in PR; bottleneck confirmed or refuted.
@@ -31,7 +36,7 @@ live at <https://elicore.github.io/mdfu/>):
 
 - [ ] **T4: Fuzzy-core bake-off.** Compare `sahilm/fuzzy` (current) vs `lithammer/fuzzysearch` vs `sajari/fuzzy` (SymDelete) on recall + latency over real titles/bodies. Acceptance: matrix + keep/swap decision; no swap without TUI blind-test win.
 - [ ] **T5: Persistent-index spike (gated).** Prototype behind a flag: (a) `bleve` `NewMemOnly` dynamic mapping, (b) `bluge`, (c) SQLite FTS5 (`modernc` vs `cgo`). Compare binary size, cold-start, query latency, fuzzy+facet parity per the backend-evaluation page. Acceptance: decision record + throwaway branches only; no new default dep.
-- [ ] **T6: Scan hardening.** Implement `RespectGitignore` (currently ignored, `internal/scan/scan.go:31`) + parallel file load. Acceptance: gitignored files excluded unless `--no-ignore`; 5k cold scan still <500ms.
+- [x] **T6: Scan hardening.** Landed in Rust (todo 38): gitignore-respecting by default with `--no-ignore` opt-out. Rust `scan.rs` implements it; the Go baseline ignored `RespectGitignore`.
 
 ### Later (v2 — language + display)
 
@@ -44,5 +49,5 @@ live at <https://elicore.github.io/mdfu/>):
 
 ## Working agreements
 
-- `internal/model` is the shared contract — changes need cross-package sign-off.
-- Each task: `go build ./... && go test ./...` green before merge.
+- `mdfu-core::model` is the shared contract — changes need cross-crate sign-off.
+- Each task: `cargo test --workspace` green before merge.

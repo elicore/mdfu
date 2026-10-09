@@ -1,7 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: gomod
-    directory: "/"
+  - package-ecosystem: cargo
+    directory: "/rust"
     schedule:
       interval: weekly
       day: monday
@@ -9,7 +9,7 @@ updates:
     commit-message:
       prefix: "deps"
     groups:
-      go-dependencies:
+      cargo-dependencies:
         patterns: ["*"]
 
   - package-ecosystem: github-actions

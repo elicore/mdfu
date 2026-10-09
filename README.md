@@ -2,9 +2,8 @@
 
 Fuzzy finder for Markdown notes — body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`mdfu <query>`, fzf-compatible).
 
-Requires Go 1.25+. A Rust port lives under `rust/` (Rust 1.98.1, pinned in
-`rust/rust-toolchain.toml`); the Go implementation stays the reference until
-cutover.
+Requires Rust 1.98.1+ (pinned in `rust/rust-toolchain.toml`) to build from
+source. Prebuilt binaries are available via Homebrew.
 
 ## Install
 
@@ -13,11 +12,8 @@ cutover.
 brew tap elicore/mdfu
 brew install --cask elicore/mdfu/mdfu
 
-# Go (installs into $(go env GOPATH)/bin — ensure it is on PATH)
-go install github.com/elicore/mdfu/cmd/mdfu@latest
-
-# or from source
-git clone https://github.com/elicore/mdfu && cd mdfu && go build -o mdfu ./cmd/mdfu
+# or from source (binary lands in rust/target/release/mdfu)
+git clone https://github.com/elicore/mdfu && cd mdfu/rust && cargo build --release
 ```
 
 ## Quick start
@@ -82,29 +78,27 @@ recognition rules and per-action behaviour.
 ## Develop
 
 ```sh
-go build ./... && go test ./...
-```
-
-### Rust port (in progress)
-
-A behavioral port of the Go tree lives in the `rust/` Cargo workspace: three
-crates, `mdfu-core` (scan/parse/query/rank/output), `mdfu-tui` (ratatui
-interface), and `mdfu-cli` (the `mdfu` binary). The Go tree stays the reference
-until cutover.
-
-```sh
 cd rust
 cargo build --release          # → rust/target/release/mdfu
 cargo test --workspace
 cargo fmt --check && cargo clippy --all-targets -- -D warnings
 ```
 
+### Implementation
+
+`mdfu` is implemented in the `rust/` Cargo workspace: three crates,
+`mdfu-core` (scan/parse/query/rank/output), `mdfu-tui` (ratatui interface), and
+`mdfu-cli` (the `mdfu` binary). The Go implementation was removed after the
+parity gate; its frozen baseline stays in git history and `rust/PARITY.md`
+records the behavioral contract.
+
 The port targets **behavioral parity**, not byte-identical task tables: non-TTY
 output (including `task list --json`) is byte-compatible, while TTY box-drawing
 glyphs and exact SGR styling are relaxed because they come from different UI
-libraries (Go lipgloss vs Rust ratatui). `rust/PARITY.md` is the parity
-contract; `make parity` runs the Go-vs-Rust differential harness against the
-frozen baseline.
+libraries (Go lipgloss vs Rust ratatui). `make parity` runs the Go-vs-Rust
+differential harness against the frozen baseline (it builds the Go reference
+from the recorded git SHA, so a Go toolchain is still required for that target
+only).
 
 ### Local CI (run the GitHub Actions locally)
 
@@ -133,9 +127,8 @@ on `main`; changes touching code, docs, or CI are validated locally first.
 
 ```sh
 make act-list          # list workflows/jobs act can run
-make act-ci            # gofmt, vet, race tests, coverage, cross-build matrix
 make act-rust          # Rust workspace: fmt, clippy, tests, release build
-make act-module-guard  # Go module + Rust workspace layout guard
+make act-module-guard  # Rust workspace layout guard
 make act-docs          # Starlight build + internal link check
 make parity            # Go-vs-Rust differential parity harness
 make act-all           # all of the above

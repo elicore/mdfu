@@ -1,125 +1,101 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-10-03
-**Commit:** 07f4527
+**Updated:** 2026-10-09 (todo 37: Go implementation removed after the parity gate)
 **Branch:** main
 
 ## OVERVIEW
 
-`mdfu` — fuzzy finder for Markdown notes (body + normalized frontmatter, OKF v0.1/v0.2 + Portent/Tolaria) plus an mdtask-compatible task CLI/TUI. Single static Go 1.25 binary, Bubble Tea TUI, no index/daemon/cgo. Module: `github.com/elicore/mdfu`. A behavioral Rust port lives in `rust/` (Cargo workspace, binary `mdfu`); since todo 36 the release pipeline builds Rust while the Go tree stays the parity reference until the todo-37 removal.
+`mdfu` — fuzzy finder for Markdown notes (body + normalized frontmatter, OKF v0.1/v0.2 + Portent/Tolaria) plus an mdtask-compatible task CLI/TUI. Single static Rust binary (Cargo workspace under `rust/`, binary `mdfu`), ratatui TUI, no index/daemon. The Go implementation was removed after the parity gate (todo 37); its frozen baseline SHA is recorded in `rust/PARITY.md`, and `make parity` still builds that baseline from git history for the differential harness.
 
 ## STRUCTURE
 
 ```
 mdfu/
-├── cmd/mdfu/        # main: flag parsing, mode dispatch, mdfu task/tasks router
-├── internal/        # all library code (11 packages, flat — see CODE MAP)
-│   ├── task/        # mdtask-compat engine: normative SPEC.md lives here
-│   └── tui/         # note picker + task TUI (Bubble Tea)
-├── tests/           # cross-package functional + regression tests (package tests)
-├── testdata/        # fixture vault (broken YAML, OKF, Portent samples) — shared by both trees
-├── rust/            # Cargo workspace: crates/{mdfu-core,mdfu-tui,mdfu-cli}; PARITY.md contract
+├── rust/            # Cargo workspace (the implementation): crates/{mdfu-core,mdfu-tui,mdfu-cli}
+│   └── PARITY.md    # NORMATIVE parity contract: frozen Go baseline + exit-code/error matrices
+├── testdata/        # fixture vault (broken YAML, OKF, Portent samples) — shared by Rust tests + parity
 ├── website/         # Astro Starlight docs — SEPARATE npm package, own .gitignore
-├── scripts/         # act-local.sh (local CI runner)
+├── scripts/         # parity.sh (Go-vs-Rust differential), act-local.sh (local CI runner)
 ├── Casks/           # Homebrew cask template (goreleaser-managed)
 ├── reports/         # perf/regression investigation notes
 ├── .github/workflows/ # CI; run locally via `make act-*`
-├── PLAN.md          # active roadmap (P0/P1 tasks)
-└── internal/task/SPEC.md  # NORMATIVE frozen task-format spec
+└── PLAN.md          # roadmap; tasks T1–T8 predate the Rust implementation, T6 landed in Rust (todo 38)
 ```
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
 |------|----------|-------|
-| CLI flags/modes/exit codes | `cmd/mdfu/main.go` | `run()` returns exit code; 0/1/2 semantics |
-| `mdfu task` subcommand routing | `cmd/mdfu/task.go` | `maybeRouteTask` runs BEFORE flag parsing |
-| Task parsing/commands/IDs | `internal/task/` | behavior changes → update `SPEC.md` + table tests |
-| Note picker / TUI | `internal/tui/tui.go` (1.4k LOC) | Two modes: list (no search bar) ↔ search (`/` to focus; `esc` back keeps query, second `esc` clears then aborts). List keys allowlisted; `e` edits focused doc via `$EDITOR` then re-parses. Entry: `Run`, `RunWithFilter`, `SetFilter` |
-| Rust port | `rust/crates/` | `mdfu-core` (no ratatui) / `mdfu-tui` / `mdfu-cli`; parity contract `rust/PARITY.md`; release source since todo 36 |
-| Task TUI | `internal/tui/tasks_*.go` | separate model; filters injected, not global |
-| Frontmatter→Document | `internal/parse/`, `internal/model/` | `model.Document` = shared contract |
-| Query syntax | `internal/query/` | bare words fuzzy, `key:value` AND-hard-filter |
-| Ranking/scoring | `internal/search/` | title-boost constants at top of file |
-| File walking | `internal/scan/` | `RespectGitignore` option exists but is NOT implemented (PLAN.md T6) |
-| Output formats | `internal/output/` | paths/json/vimgrep; `Result` decoupled from scan/search |
-| Theme/styles | `internal/theme/` | XDG YAML merged over builtin defaults |
+| CLI flags/modes/exit codes | `rust/crates/mdfu-cli/src/main.rs` | clap derive; `run()` returns exit code; 0/1/2 semantics |
+| `mdfu task` subcommand routing | `rust/crates/mdfu-cli/src/router.rs` | router runs BEFORE flag parsing; unknown token after `task` falls through to fuzzy search (D2) |
+| Task parsing/commands/IDs | `rust/crates/mdfu-core/src/task/` | `grammar`, `body`, `id`, `blocker`, `config`, `glob`, `discover`, `render`, `edit`, `scope`, `cli` (nine subcommands); behavior contract in `rust/PARITY.md` |
+| Note picker / TUI | `rust/crates/mdfu-tui/src/notes/` | `app.rs` state/keys, `view.rs` render, `editor.rs` `$EDITOR` reload; list ↔ search modes (`/` focus, `esc` back keeps query, second `esc` clears then aborts) |
+| Task TUI | `rust/crates/mdfu-tui/src/tasks/` | separate model (`model.rs`), actions (`actions.rs`), editors (`edit.rs`); filters injected, never global |
+| Frontmatter→Document | `rust/crates/mdfu-core/src/parse.rs`, `model.rs` | `model::Document` = shared contract |
+| Query syntax | `rust/crates/mdfu-core/src/query.rs` | bare words fuzzy, `key:value` AND-hard-filter |
+| Ranking/scoring | `rust/crates/mdfu-core/src/search.rs` | title-boost constants at top of file |
+| File walking | `rust/crates/mdfu-core/src/scan.rs` | gitignore-respecting by default; `--no-ignore` opts out (intended divergence, task 38) |
+| Output formats | `rust/crates/mdfu-core/src/output.rs` | paths/json/vimgrep; `Result` decoupled from scan/search |
+| Theme/styles | `rust/crates/mdfu-core/src/theme.rs` | XDG YAML merged over builtin defaults |
+| Widget/content boundary | `rust/crates/mdfu-tui/src/view_model.rs`, `widgets/` | plain-data view models; no ratatui in core |
+| Parity harness | `scripts/parity.sh` + `rust/crates/mdfu-cli/tests/parity.rs` | `make parity`; `--mutate` proves the comparator detects a tamper |
 | Docs site | `website/src/content/docs/` | guide/ reference/ project/; sidebar in `astro.config.mjs` |
 
 ## CODE MAP
 
-LSP (gopls) and codegraph unavailable — centrality measured by grep import counts.
+| Crate | Key modules | Role |
+|-------|-------------|------|
+| `mdfu-core` | `scan`, `parse`, `model`, `query`, `search`, `output`, `theme`, `open`, `task` | Content + search logic; must not depend on ratatui or TUI crates |
+| `mdfu-tui` | `view_model`, `widgets`, `preview`, `links`, `notes`, `tasks` | ratatui note picker + task TUI over core |
+| `mdfu-cli` | `main` (clap), `router`, `pipeline` | the `mdfu` binary: flags, mode dispatch, task/tasks router |
 
-| Package | Exported funcs/types | Importers | Role |
-|---------|---------------------|-----------|------|
-| `internal/model` | 2/4 | 12 | Shared `Document` contract — cross-package sign-off for changes |
-| `internal/theme` | 12/1 | 11 | Theme resolution; consumed by tui + cmd |
-| `internal/task` | 88/14 | 9 | Task engine; registry via `init()` per subcommand |
-| `internal/tui` | 86/14 | 3 | Both TUIs; entry: `Run`, `RunTasks` |
-| `internal/query` | 14/2 | 3 | Query parser |
-| `internal/search` | 20/0 | 2 | Ranking |
-| `internal/parse` | 10/0 | 2 | Frontmatter split + normalize |
-| `internal/output` | 11/1 | 2 | Formatting |
-| `internal/scan` | 2/1 | 1 | Directory walk |
-| `internal/open` | 2/0 | 1 | URL launch (web schemes only) |
-
-Pipeline: `scan` → `parse` → `model` → `query`+`search` → `output`; TUI re-ranks live via `FilterFunc`.
-
-## RUST MAP
-
-| Crate | Role |
-|-------|------|
-| `mdfu-core` | scan/parse/model/query/rank/output — must not depend on ratatui or TUI crates |
-| `mdfu-tui` | ratatui note picker + task TUI |
-| `mdfu-cli` | `mdfu` binary: clap flags, mode dispatch, task/tasks router |
+Pipeline: `scan` → `parse` → `model` → `query`+`search` → `output`; the TUI re-ranks live via an injected `FilterFn`.
 
 `rust/PARITY.md` is the parity contract (frozen Go baseline SHA); non-TTY output
 is byte-compatible, TTY glyphs/SGR are relaxed (Go lipgloss vs Rust ratatui).
 Release source is the Rust workspace: `.goreleaser.yaml` uses `builder: rust`,
 and `release.yml`/`release-check.yml`/`brew.yml`/`release-please.yml` install
-rustup 1.98.1 + zig 0.15.2. Go remains in `ci.yml`/`codeql.yml` until todo 37.
+rustup 1.98.1 + zig 0.15.2.
 
 ## CONVENTIONS
 
-- **Go style**: `gofmt` clean, `go vet`, `go mod tidy -diff` all gate CI. No lint config file — stdlib style.
-- **Tests**: table tests with literal expected strings (byte-identical to SPEC.md). In-package (`package task`, not `task_test`) except cross-package `tests/`. `Env` struct injects Stdout/Stderr/Cwd/Now — command layer never touches the real host.
-- **Exit codes**: SPEC.md §I — 0 success, 1 runtime/IO/config error, 2 usage error.
-- **Flag handling**: Go `flag` stops at first positional → `task.ReorderInterspersed` reorders (GNU-style interspersed flags). Don't "fix" by parsing manually.
-- **Commits**: conventional (`feat(tui):`, `docs:`, `ci:`) — release-please drives CHANGELOG from these.
-- **Subcommand registration**: each `internal/task/*.go` calls `register()` from `init()`; never edit `commands.go` dispatch.
+- **Rust style**: `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` (workspace) gate CI. Toolchain pinned to 1.98.1 by `rust/rust-toolchain.toml`.
+- **Tests**: in-crate unit tests plus integration targets (`mdfu-cli/tests/{cli,parity}.rs`, `mdfu-tui/tests/guards.rs`); expected strings are literal and byte-compared against the frozen baseline where the parity contract says so. Rust tests read `testdata/` via `CARGO_MANIFEST_DIR` paths.
+- **Exit codes**: 0 success, 1 runtime/IO/config error, 2 usage error — matrices in `rust/PARITY.md` (carried from the Go SPEC).
+- **Flag handling**: clap handles interspersed flags natively; do not reintroduce the Go `ReorderInterspersed` shim (dropped in the port).
+- **Commits**: conventional (`feat(tui):`, `docs:`, `ci:`) — release-please drives CHANGELOG from these. `release-type: go` is kept only because release-please's Rust strategy rejects virtual workspaces; `extra-files` pins `rust/Cargo.toml`'s workspace version.
+- **Task subcommands**: handlers live in `mdfu-core/src/task/cli.rs`; the `mdfu-cli` router decides interception order. Don't move routing into the core engine.
 - **Docs**: user-facing docs live ONLY in `website/src/content/docs/` (docs/ is a redirect stub). Update sidebar in `astro.config.mjs` when adding a page.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
-- **No second Go module / go.work / submodules** — enforced by `module-guard.yml` (exactly one `go.mod` outside `website/`).
-- **No second Cargo workspace / stray crates** — exactly `rust/Cargo.toml` + the 3 member manifests + one `rust/Cargo.lock`; enforced by the `single-workspace` job in `module-guard.yml`.
+- **No second Cargo workspace / stray crates** — exactly `rust/Cargo.toml` + the 3 member manifests + one `rust/Cargo.lock`; enforced by the `single-workspace` job in `module-guard.yml`. No submodules.
 - **No persistent index, daemon, or cgo** — locked constraint (PLAN.md).
-- **No global filter in task TUI** — `tasks_run_test.go` greps tasks sources for `SetFilter`/`globalFilter` and fails the build. Inject via `TaskFilterFunc`.
-- **Never touch the note picker's `SetFilter` global from tasks code** (same guard).
-- **No `mdtask`/`mdtask-add`/`mdtask-do` strings in embedded skills** — `install_skills_test.go` forbids foreign skill names in `internal/task/skills/`.
-- **Don't parse task-looking lines inside body text** — body is opaque per SPEC.md §A.
-- **Don't change `model.Document` casually** — working agreement: cross-package sign-off (PLAN.md).
-- **Checkbox `X` (uppercase) is not a task** — must be ignored, not normalized.
+- **No global filter in the task TUI** — `mdfu-tui/tests/guards.rs` scans `src/tasks/` for `notes::`/`SetFilter`/`global_filter` vocabulary and fails the build. Inject via the task filter type.
+- **Never touch the note picker's filter global from tasks code** (same guard).
+- **No `mdtask`/`mdtask-add`/`mdtask-do` strings in embedded skills** — `guards.rs` forbids foreign skill names in `mdfu-core/assets/skills/`.
+- **Don't parse task-looking lines inside body text** — body is opaque per the frozen task contract.
+- **Don't change `model::Document` casually** — it is the shared contract across scan/parse/query/search/output/tui.
+- **Checkbox `X` (uppercase) is not a task** — must be ignored, not normalized (broad TUI checkbox mode is separate).
 
 ## UNIQUE STYLES
 
-- `internal/task/SPEC.md` is normative+frozen: output is byte-identical to the spec; tests assert with string literals. Divergences only via §K.
-- Parsing never fails hard (`parse`): malformed frontmatter → `Document.ParseError`, body stays searchable.
-- `output.Result` intentionally decoupled from scan/query/search — callers map before formatting.
-- Big files exist and are accepted: `tui/tui.go` (1377), `tui/tasks_model.go` (763), `search/search.go` (510).
-- Local CI is first-class: `make act-ci` runs the real GitHub Actions YAML via nektos/act (Docker). Workflows that can't run locally: codeql, pages deploy, release-please, brew, release, release-check (Rust snapshot needs rustup+zig+cargo-zigbuild in the container).
+- `rust/PARITY.md` is normative+frozen for ported behavior: non-TTY output is byte-identical; divergences are recorded explicitly and guarded by `parity.rs` tests. Update the doc and its guard phrases together.
+- Parsing never fails hard (`parse`): malformed frontmatter → `ParseError`, body stays searchable.
+- `output::Result` is intentionally decoupled from scan/query/search — callers map before formatting.
+- Big files exist and are accepted: `task/cli.rs` (~82k), `parse.rs` (~50k), `links.rs` (~51k), `view_model.rs` (~47k), `search.rs` (~47k).
+- Local CI is first-class: `make act-rust` runs the real GitHub Actions YAML via nektos/act (Docker). Workflows that can't run locally: codeql, pages deploy, release-please, brew, release, release-check (Rust snapshot needs rustup+zig+cargo-zigbuild in the container).
 
 ## COMMANDS
 
 ```bash
-go build ./... && go test ./...          # dev loop (must stay green)
-test -z "$(gofmt -l .)" && go vet ./...  # CI gates
-cd rust && cargo test --workspace        # Rust dev loop (parity target)
-cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings  # Rust CI gates
+cd rust && cargo test --workspace        # dev loop (must stay green)
+cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings  # CI gates
 cd rust && cargo build --release         # → rust/target/release/mdfu
-make parity                              # Go-vs-Rust differential harness (frozen baseline)
-make act-ci                              # full local CI (gofmt/vet/race/coverage/cross-build)
+make parity                              # Go-vs-Rust differential harness (builds the frozen Go baseline from git history; needs a Go toolchain)
 make act-rust                            # Rust workflow locally (act)
+make act-module-guard                    # Rust workspace layout guard locally (act)
 make act-docs                            # Starlight build + internal link check
 make act-all                             # every locally-runnable workflow
 cd website && npm ci && npm run dev      # docs preview (Node 22)
@@ -128,9 +104,9 @@ cd website && npm ci && npm run dev      # docs preview (Node 22)
 ## NOTES
 
 - Branch `main`; `.omo/` holds plan/task evidence (gitignored).
-- Release vs parity: releases are built from `rust/` (`.goreleaser.yaml`), but the Go tree is still the behavioral reference — `make parity` diffs the frozen-SHA Go build against the Rust build, and `ci.yml`/`codeql.yml` keep Go green until todo 37 removes the tree.
-- Note picker seams are injected, never imported: `FilterFunc` (filtering) and `ReloadFunc func(path string) (*model.Document, error)` (re-parse after `$EDITOR` exits). `internal/tui` imports only `model` + stdlib + bubbletea; `cmd/mdfu` wires `Config.Reload` to `reloadDocument` in `pipeline.go`.
-- `scan.Options.RespectGitignore` is a no-op (PLAN.md T6) — flag exists, behavior doesn't.
+- Release vs parity: releases are built from `rust/` (`.goreleaser.yaml`); `make parity` diffs the frozen-SHA Go build against the Rust build, and the Go tree itself no longer exists in the working tree (baseline lives in git history, recorded in `rust/PARITY.md`).
+- TUI seams are injected, never imported: the note picker takes a filter function and a reload function (`mdfu-cli` wires them to `parse`); `mdfu-tui` imports `mdfu-core` only.
 - `--limit`: filter mode defaults 20, TUI 50; `0`/negative = unlimited.
-- `mdfu task` intentionally falls through to fuzzy search when router doesn't match ("task" is also a Portent DocType).
+- `mdfu task` intentionally falls through to fuzzy search when the router doesn't match ("task" is also a Portent DocType).
 - `website/dist` and `node_modules` gitignored at website level; root `/dist/` too.
+- Doc debt: some `website/src/content/docs/` prose still names the removed Go packages (`internal/...`) or the removed `make act-ci` target; `rust/PARITY.md` keeps its `internal/...` source references on purpose (they are pinned to the frozen baseline SHA).
