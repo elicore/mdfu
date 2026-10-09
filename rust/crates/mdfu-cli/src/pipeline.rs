@@ -33,8 +33,9 @@ pub struct Options<'a> {
     pub root: &'a str,
     /// Include hidden files and directories.
     pub include_hidden: bool,
-    /// Respect `.gitignore`; accepted for parity, a no-op in
-    /// [`scan::walk_markdown`] until todo 38.
+    /// Honor `.gitignore`/`.ignore` files (PLAN T6); `--no-ignore` maps to
+    /// `false`. The Go reference accepts `RespectGitignore` but ignores it, so
+    /// `false` is the parity behavior (see [`scan::walk_markdown`]).
     pub respect_gitignore: bool,
     /// Include archived documents.
     pub include_archived: bool,

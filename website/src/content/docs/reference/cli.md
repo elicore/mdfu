@@ -31,10 +31,12 @@ The Rust binary (`rust/crates/mdfu-cli`) tracks the Go CLI for behavioral
 parity, not byte-for-byte identical UI. The notes below call out the surface
 differences; `rust/PARITY.md` is the full contract.
 
-- `--no-ignore`: accepted by both, and a no-op in both today. Neither binary
-  consults `.gitignore`, so gitignored files are returned by default (see
-  [Scan](/guide/scan/)); the flag exists for the planned behavior, not the
-  current one.
+- `--no-ignore`: Rust respects `.gitignore` and `.ignore` files (including
+  those in parent directories) by default, and `--no-ignore` disables that —
+  the port's one deliberate behavioral divergence. Go accepts
+  `RespectGitignore` but ignores it (`scan.go:31`), so the Go binary always
+  returns gitignored files. Run either binary with `--no-ignore` for
+  byte-identical discovery (see [Scan](/guide/scan/)).
 - Filter `--format json`: `score` is a constant `0` in both, but the Go encoder
   prints `"score": 0` while the Rust encoder prints `"score": 0.0`. The value is
   never meaningful today (there is no scoring in filter mode).

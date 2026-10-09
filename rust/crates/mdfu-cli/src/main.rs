@@ -59,7 +59,7 @@ struct Cli {
     #[arg(long)]
     hidden: bool,
 
-    /// Disable gitignore respect.
+    /// Disable gitignore respect (respect is on by default, unlike Go).
     #[arg(long = "no-ignore")]
     no_ignore: bool,
 

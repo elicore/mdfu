@@ -223,6 +223,14 @@ are byte-identical including the trailing newline.
   directory (os error 2)`. Exit 1, empty stdout, and the `mdfu: ` prefix are
   identical; only the OS-error sentence differs (`os.Lstat` vs the `ignore`
   crate). Asserted by `parity_missing_root_is_a_documented_divergence`.
+- Default gitignore handling (task 38, PLAN T6): the Rust port respects
+  `.gitignore`/`.ignore` files, including parent directories, by default, and
+  `--no-ignore` disables that. The Go baseline accepts `RespectGitignore` but
+  ignores it (`internal/scan/scan.go:31`), so it always returns gitignored
+  files. Neither harness vault contains ignore files, so all 66 differential
+  cases stay byte-identical and both binaries are byte-identical under
+  `--no-ignore`; the divergence itself is asserted by
+  `parity_gitignore_default_is_a_documented_divergence`.
 - CLI usage-error wording, help stream, and single-dash long flags (clap vs Go
   `flag`), recorded in task 28. The harness only covers the custom
   `--format` usage message, which is byte-identical.

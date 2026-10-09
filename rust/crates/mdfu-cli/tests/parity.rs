@@ -996,6 +996,60 @@ fn parity_missing_root_is_a_documented_divergence() {
     );
 }
 
+/// The Rust gitignore-by-default behavior (task 38) is a recorded divergence:
+/// Go cannot skip gitignored files at all, Rust skips them unless
+/// `--no-ignore`, where both binaries return the full list byte-identically.
+#[test]
+fn parity_gitignore_default_is_a_documented_divergence() {
+    const VAULT: &[(&str, &str)] = &[
+        (".gitignore", "ignored.md\n"),
+        ("ignored.md", "# Ignored\n\nlighthouse ignored\n"),
+        ("visible.md", "# Visible\n\nlighthouse visible\n"),
+    ];
+    let Some((go_bin, rust_bin)) = go_binaries_or_skip("gitignore-divergence") else {
+        return;
+    };
+    let root = TempDir::new("gitignore");
+    let go_vault = root.path().join("go").join("vault");
+    let rust_vault = root.path().join("rust").join("vault");
+    write_files(&go_vault, VAULT);
+    write_files(&rust_vault, VAULT);
+
+    let query: &[&str] = &["--format", "paths", "lighthouse"];
+    let (go_default, _, go_code) = invoke(&go_bin, &go_vault, query);
+    let (rust_default, _, rust_code) = invoke(&rust_bin, &rust_vault, query);
+    assert_eq!(go_code, 0);
+    assert_eq!(rust_code, 0);
+    let go_default = String::from_utf8_lossy(&go_default).into_owned();
+    let rust_default = String::from_utf8_lossy(&rust_default).into_owned();
+    assert!(
+        go_default.contains("ignored.md"),
+        "go default: {go_default}"
+    );
+    assert!(
+        !rust_default.contains("ignored.md"),
+        "rust default: {rust_default}"
+    );
+    assert!(
+        rust_default.contains("visible.md"),
+        "rust default: {rust_default}"
+    );
+
+    let no_ignore: &[&str] = &["--format", "paths", "--no-ignore", "lighthouse"];
+    let (go_no_ignore, _, go_ni_code) = invoke(&go_bin, &go_vault, no_ignore);
+    let (rust_no_ignore, _, rust_ni_code) = invoke(&rust_bin, &rust_vault, no_ignore);
+    assert_eq!(go_ni_code, 0);
+    assert_eq!(rust_ni_code, 0);
+    assert_eq!(go_no_ignore, rust_no_ignore, "--no-ignore: byte-identical");
+    assert!(String::from_utf8_lossy(&go_no_ignore).contains("ignored.md"));
+
+    assert!(
+        PARITY_MD.contains("gitignore"),
+        "rust/PARITY.md must record the gitignore divergence"
+    );
+    eprintln!("PARITY-OK gitignore: rust excludes by default; --no-ignore byte-identical");
+}
+
 /// `rust/PARITY.md` lists the exact non-testable surfaces and the one
 /// normalization; this guard fails when the document drifts from the harness.
 #[test]

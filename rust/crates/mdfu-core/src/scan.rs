@@ -1,39 +1,59 @@
 //! Directory scanning: find Markdown files under a root.
 //!
-//! Port of the Go `internal/scan` package. The default behavior is a
-//! deliberate parity match: `.gitignore` files are **not** consulted, so
-//! gitignored files are returned (`respect_gitignore` is accepted but is a
-//! documented no-op; respecting it is tracked by todo 38).
+//! Port of the Go `internal/scan` package with one deliberate divergence
+//! (PLAN T6, todo 38): gitignore-respecting is **effective** here and it is
+//! the default. `.gitignore` and `.ignore` files (including those in parent
+//! directories) are consulted, so gitignored files are skipped unless
+//! [`Options::respect_gitignore`] is `false` (`--no-ignore`). The Go
+//! reference accepts `RespectGitignore` and ignores it
+//! (`internal/scan/scan.go:31`), so it always returns gitignored files. Every
+//! other discovery rule (hidden, `.git`, symlinks, sort, limit) matches Go.
 
 use std::path::{Component, Path, PathBuf};
 
 use ignore::{DirEntry, WalkBuilder};
 
-/// Controls [`walk_markdown`] behavior. Mirrors Go `scan.Options`.
-#[derive(Debug, Clone, Default)]
+/// Controls [`walk_markdown`] behavior. Mirrors Go `scan.Options`, plus the
+/// now-effective `respect_gitignore` (todo 38).
+#[derive(Debug, Clone)]
 pub struct Options {
     /// Root directory to walk; empty defaults to `.` (Go parity).
     pub root: String,
     /// Include hidden files and directories (names starting with `.`).
     /// `.git` is always skipped regardless of this flag.
     pub include_hidden: bool,
-    /// Accepted for parity with Go `scan.Options.RespectGitignore`, which is
-    /// ignored (`internal/scan/scan.go:31`). Gitignored files are returned by
-    /// default; making this effective is todo 38.
+    /// Honor `.gitignore` and `.ignore` files, including parent directories.
+    /// Defaults to `true` (the CLI default); `--no-ignore` sets `false` and
+    /// restores the Go reference's include-everything behavior.
     pub respect_gitignore: bool,
     /// Maximum number of results after sorting. `0` or negative = unlimited.
     pub limit: i64,
 }
 
+impl Default for Options {
+    /// The CLI defaults: current directory, visible files only,
+    /// gitignore-respecting, unlimited.
+    fn default() -> Self {
+        Self {
+            root: String::new(),
+            include_hidden: false,
+            respect_gitignore: true,
+            limit: 0,
+        }
+    }
+}
+
 /// Walks `opts.root` and returns sorted paths of `*.md` files
 /// (case-insensitive extension match).
 ///
-/// Behavior (parity with Go `scan.WalkMarkdown`):
+/// Behavior (parity with Go `scan.WalkMarkdown` except for gitignore):
 /// - `.git` directories are always skipped.
 /// - Hidden files/dirs (names starting with `.`) are skipped unless
 ///   [`Options::include_hidden`]; a hidden root itself is still walked.
 /// - Symlinks (file and directory) are skipped and never followed.
-/// - Gitignored files **are** returned; see [`Options::respect_gitignore`].
+/// - Gitignored files (`.gitignore`/`.ignore`, including parent-directory
+///   files) are skipped unless [`Options::respect_gitignore`] is `false`; the
+///   Go reference honors no ignore files at all.
 /// - Results are sorted byte-wise and truncated to [`Options::limit`].
 ///
 /// # Errors
@@ -42,9 +62,6 @@ pub struct Options {
 /// `filepath.WalkDir` error (for example, a missing or unreadable root).
 #[must_use = "returns the discovered Markdown paths or the first walk error"]
 pub fn walk_markdown(opts: &Options) -> Result<Vec<String>, ignore::Error> {
-    // `opts.respect_gitignore` is intentionally not read: Go accepts and
-    // ignores `RespectGitignore` (`internal/scan/scan.go:31`), and honoring
-    // `.gitignore` is todo 38.
     let root = if opts.root.is_empty() {
         "."
     } else {
@@ -76,16 +93,20 @@ pub fn walk_markdown(opts: &Options) -> Result<Vec<String>, ignore::Error> {
         true
     };
 
+    let respect = opts.respect_gitignore;
     let walker = WalkBuilder::new(root)
         // Hidden handling is ours so the Go rules (root exemption, `.git`)
         // apply exactly.
         .hidden(false)
-        // Parity: gitignored files ARE included by default.
-        .git_ignore(false)
+        // The one deliberate divergence: ignore files are honored by default;
+        // `--no-ignore` turns each source off. `.gitignore` stays effective
+        // outside a git work tree (`require_git(false)`), and the global git
+        // config / `.git/info/exclude` stay out of scope.
+        .git_ignore(respect)
         .git_global(false)
         .git_exclude(false)
-        .ignore(false)
-        .parents(false)
+        .ignore(respect)
+        .parents(respect)
         .require_git(false)
         .follow_links(false)
         .filter_entry(filter)
@@ -208,49 +229,6 @@ mod tests {
     }
 
     #[test]
-    fn gitignored_files_are_returned_by_default() {
-        let dir = vault(&[
-            (".gitignore", "ignored.md\ndist/\n"),
-            (".git/HEAD", "ref: refs/heads/main\n"),
-            ("visible.md", "# V\n"),
-            ("ignored.md", "# I\n"),
-            ("dist/bundle.md", "# B\n"),
-        ]);
-        assert_eq!(
-            relative(dir.path(), &walk(&dir, false)),
-            ["dist/bundle.md", "ignored.md", "visible.md"]
-        );
-    }
-
-    #[test]
-    fn respect_gitignore_is_an_accepted_no_op() {
-        let dir = vault(&[(".gitignore", "ignored.md\n"), ("ignored.md", "# I\n")]);
-        let got = walk_markdown(&Options {
-            root: dir.path().to_string_lossy().into_owned(),
-            respect_gitignore: true,
-            ..Options::default()
-        })
-        .expect("walk");
-        assert_eq!(relative(dir.path(), &got), ["ignored.md"]);
-    }
-
-    #[test]
-    fn parent_gitignore_is_not_consulted() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let parent = dir.path().join("parent");
-        let child = parent.join("child");
-        fs::create_dir_all(&child).expect("mkdir");
-        fs::write(parent.join(".gitignore"), "child/\n").expect("write");
-        fs::write(child.join("a.md"), "# A\n").expect("write");
-        let got = walk_markdown(&Options {
-            root: child.to_string_lossy().into_owned(),
-            ..Options::default()
-        })
-        .expect("walk");
-        assert_eq!(relative(&child, &got), ["a.md"]);
-    }
-
-    #[test]
     fn non_markdown_skipped_and_extension_case_insensitive() {
         let dir = vault(&[
             ("note.md", "# N\n"),
@@ -348,5 +326,139 @@ mod tests {
             go_style_path(Path::new("vault"), Path::new("vault/note.md")),
             "vault/note.md"
         );
+    }
+}
+
+/// `.gitignore`/`.ignore` behavior (todo 38, PLAN T6): ignored files are
+/// skipped by default and returned with `respect_gitignore: false`
+/// (`--no-ignore`).
+///
+/// Module name is significant: `cargo test -p mdfu-core scan::gitignore`
+/// selects exactly these cases.
+#[cfg(test)]
+mod gitignore {
+    use super::{walk_markdown, Options};
+    use std::fs;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn vault(files: &[(&str, &str)]) -> TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for (rel, contents) in files {
+            let path = dir.path().join(rel);
+            fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            fs::write(&path, contents).expect("write");
+        }
+        dir
+    }
+
+    fn relative(base: &Path, paths: &[String]) -> Vec<String> {
+        paths
+            .iter()
+            .map(|p| {
+                Path::new(p)
+                    .strip_prefix(base)
+                    .expect("path under root")
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect()
+    }
+
+    fn walk(root: &Path, respect_gitignore: bool) -> Vec<String> {
+        walk_markdown(&Options {
+            root: root.to_string_lossy().into_owned(),
+            respect_gitignore,
+            ..Options::default()
+        })
+        .expect("walk")
+    }
+
+    fn ignored_vault() -> TempDir {
+        vault(&[
+            (".gitignore", "ignored.md\ndist/\n"),
+            (".git/HEAD", "ref: refs/heads/main\n"),
+            ("visible.md", "# V\n"),
+            ("ignored.md", "# I\n"),
+            ("dist/bundle.md", "# B\n"),
+        ])
+    }
+
+    #[test]
+    fn gitignored_files_excluded_by_default() {
+        let dir = ignored_vault();
+        assert_eq!(
+            relative(dir.path(), &walk(dir.path(), true)),
+            ["visible.md"]
+        );
+    }
+
+    #[test]
+    fn gitignored_files_included_with_no_ignore() {
+        let dir = ignored_vault();
+        assert_eq!(
+            relative(dir.path(), &walk(dir.path(), false)),
+            ["dist/bundle.md", "ignored.md", "visible.md"]
+        );
+    }
+
+    #[test]
+    fn gitignore_applies_outside_a_git_repository() {
+        let dir = vault(&[
+            (".gitignore", "ignored.md\n"),
+            ("ignored.md", "# I\n"),
+            ("kept.md", "# K\n"),
+        ]);
+        assert_eq!(relative(dir.path(), &walk(dir.path(), true)), ["kept.md"]);
+        assert_eq!(
+            relative(dir.path(), &walk(dir.path(), false)),
+            ["ignored.md", "kept.md"]
+        );
+    }
+
+    #[test]
+    fn dot_ignore_files_respected_by_default_and_disabled() {
+        let dir = vault(&[
+            (".ignore", "via-ignore.md\n"),
+            ("via-ignore.md", "# V\n"),
+            ("kept.md", "# K\n"),
+        ]);
+        assert_eq!(relative(dir.path(), &walk(dir.path(), true)), ["kept.md"]);
+        assert_eq!(
+            relative(dir.path(), &walk(dir.path(), false)),
+            ["kept.md", "via-ignore.md"]
+        );
+    }
+
+    #[test]
+    fn nested_gitignore_applies_within_its_directory() {
+        let dir = vault(&[
+            ("sub/.gitignore", "b.md\n"),
+            ("sub/a.md", "# A\n"),
+            ("sub/b.md", "# B\n"),
+            ("c.md", "# C\n"),
+        ]);
+        assert_eq!(
+            relative(dir.path(), &walk(dir.path(), true)),
+            ["c.md", "sub/a.md"]
+        );
+        assert_eq!(
+            relative(dir.path(), &walk(dir.path(), false)),
+            ["c.md", "sub/a.md", "sub/b.md"]
+        );
+    }
+
+    #[test]
+    fn parent_directory_gitignore_respected_and_disabled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let parent = dir.path().join("parent");
+        let child = parent.join("child");
+        let sub = child.join("sub");
+        fs::create_dir_all(&sub).expect("mkdir");
+        fs::write(parent.join(".gitignore"), "child/sub/\n").expect("write");
+        fs::write(child.join("a.md"), "# A\n").expect("write");
+        fs::write(sub.join("b.md"), "# B\n").expect("write");
+        assert_eq!(relative(&child, &walk(&child, true)), ["a.md"]);
+        assert_eq!(relative(&child, &walk(&child, false)), ["a.md", "sub/b.md"]);
     }
 }
