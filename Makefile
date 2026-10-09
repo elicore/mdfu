@@ -2,7 +2,8 @@
 #
 # `act-*` targets run the real GitHub Actions YAML locally via nektos/act
 # (Docker required); see scripts/act-local.sh. Unsupported locally:
-# codeql, pages/deploy, release-please, brew, release.
+# release-check (Rust snapshot needs rustup+zig+cargo-zigbuild), codeql,
+# pages/deploy, release-please, brew, release.
 
 ACT_LOCAL := ./scripts/act-local.sh
 
@@ -27,7 +28,7 @@ act-ci:
 act-rust:
 	@$(ACT_LOCAL) rust
 
-## Run the single-module layout guard.
+## Run the Go module + Rust workspace layout guard.
 act-module-guard:
 	@$(ACT_LOCAL) module-guard
 
@@ -35,7 +36,7 @@ act-module-guard:
 act-docs:
 	@$(ACT_LOCAL) docs
 
-## Run the GoReleaser snapshot build.
+## Rust snapshot release check (native only: needs rustup+zig+cargo-zigbuild).
 act-release-check:
 	@$(ACT_LOCAL) release-check
 

@@ -6,7 +6,7 @@
 
 ## OVERVIEW
 
-`mdfu` — fuzzy finder for Markdown notes (body + normalized frontmatter, OKF v0.1/v0.2 + Portent/Tolaria) plus an mdtask-compatible task CLI/TUI. Single static Go 1.25 binary, Bubble Tea TUI, no index/daemon/cgo. Module: `github.com/elicore/mdfu`.
+`mdfu` — fuzzy finder for Markdown notes (body + normalized frontmatter, OKF v0.1/v0.2 + Portent/Tolaria) plus an mdtask-compatible task CLI/TUI. Single static Go 1.25 binary, Bubble Tea TUI, no index/daemon/cgo. Module: `github.com/elicore/mdfu`. A behavioral Rust port lives in `rust/` (Cargo workspace, binary `mdfu`); since todo 36 the release pipeline builds Rust while the Go tree stays the parity reference until the todo-37 removal.
 
 ## STRUCTURE
 
@@ -17,7 +17,8 @@ mdfu/
 │   ├── task/        # mdtask-compat engine: normative SPEC.md lives here
 │   └── tui/         # note picker + task TUI (Bubble Tea)
 ├── tests/           # cross-package functional + regression tests (package tests)
-├── testdata/        # fixture vault (broken YAML, OKF, Portent samples)
+├── testdata/        # fixture vault (broken YAML, OKF, Portent samples) — shared by both trees
+├── rust/            # Cargo workspace: crates/{mdfu-core,mdfu-tui,mdfu-cli}; PARITY.md contract
 ├── website/         # Astro Starlight docs — SEPARATE npm package, own .gitignore
 ├── scripts/         # act-local.sh (local CI runner)
 ├── Casks/           # Homebrew cask template (goreleaser-managed)
@@ -35,6 +36,7 @@ mdfu/
 | `mdfu task` subcommand routing | `cmd/mdfu/task.go` | `maybeRouteTask` runs BEFORE flag parsing |
 | Task parsing/commands/IDs | `internal/task/` | behavior changes → update `SPEC.md` + table tests |
 | Note picker / TUI | `internal/tui/tui.go` (1.4k LOC) | Two modes: list (no search bar) ↔ search (`/` to focus; `esc` back keeps query, second `esc` clears then aborts). List keys allowlisted; `e` edits focused doc via `$EDITOR` then re-parses. Entry: `Run`, `RunWithFilter`, `SetFilter` |
+| Rust port | `rust/crates/` | `mdfu-core` (no ratatui) / `mdfu-tui` / `mdfu-cli`; parity contract `rust/PARITY.md`; release source since todo 36 |
 | Task TUI | `internal/tui/tasks_*.go` | separate model; filters injected, not global |
 | Frontmatter→Document | `internal/parse/`, `internal/model/` | `model.Document` = shared contract |
 | Query syntax | `internal/query/` | bare words fuzzy, `key:value` AND-hard-filter |
@@ -63,6 +65,20 @@ LSP (gopls) and codegraph unavailable — centrality measured by grep import cou
 
 Pipeline: `scan` → `parse` → `model` → `query`+`search` → `output`; TUI re-ranks live via `FilterFunc`.
 
+## RUST MAP
+
+| Crate | Role |
+|-------|------|
+| `mdfu-core` | scan/parse/model/query/rank/output — must not depend on ratatui or TUI crates |
+| `mdfu-tui` | ratatui note picker + task TUI |
+| `mdfu-cli` | `mdfu` binary: clap flags, mode dispatch, task/tasks router |
+
+`rust/PARITY.md` is the parity contract (frozen Go baseline SHA); non-TTY output
+is byte-compatible, TTY glyphs/SGR are relaxed (Go lipgloss vs Rust ratatui).
+Release source is the Rust workspace: `.goreleaser.yaml` uses `builder: rust`,
+and `release.yml`/`release-check.yml`/`brew.yml`/`release-please.yml` install
+rustup 1.98.1 + zig 0.15.2. Go remains in `ci.yml`/`codeql.yml` until todo 37.
+
 ## CONVENTIONS
 
 - **Go style**: `gofmt` clean, `go vet`, `go mod tidy -diff` all gate CI. No lint config file — stdlib style.
@@ -76,6 +92,7 @@ Pipeline: `scan` → `parse` → `model` → `query`+`search` → `output`; TUI 
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - **No second Go module / go.work / submodules** — enforced by `module-guard.yml` (exactly one `go.mod` outside `website/`).
+- **No second Cargo workspace / stray crates** — exactly `rust/Cargo.toml` + the 3 member manifests + one `rust/Cargo.lock`; enforced by the `single-workspace` job in `module-guard.yml`.
 - **No persistent index, daemon, or cgo** — locked constraint (PLAN.md).
 - **No global filter in task TUI** — `tasks_run_test.go` greps tasks sources for `SetFilter`/`globalFilter` and fails the build. Inject via `TaskFilterFunc`.
 - **Never touch the note picker's `SetFilter` global from tasks code** (same guard).
@@ -90,14 +107,19 @@ Pipeline: `scan` → `parse` → `model` → `query`+`search` → `output`; TUI 
 - Parsing never fails hard (`parse`): malformed frontmatter → `Document.ParseError`, body stays searchable.
 - `output.Result` intentionally decoupled from scan/query/search — callers map before formatting.
 - Big files exist and are accepted: `tui/tui.go` (1377), `tui/tasks_model.go` (763), `search/search.go` (510).
-- Local CI is first-class: `make act-ci` runs the real GitHub Actions YAML via nektos/act (Docker). Workflows that can't run locally: codeql, pages deploy, release-please, brew, release.
+- Local CI is first-class: `make act-ci` runs the real GitHub Actions YAML via nektos/act (Docker). Workflows that can't run locally: codeql, pages deploy, release-please, brew, release, release-check (Rust snapshot needs rustup+zig+cargo-zigbuild in the container).
 
 ## COMMANDS
 
 ```bash
 go build ./... && go test ./...          # dev loop (must stay green)
 test -z "$(gofmt -l .)" && go vet ./...  # CI gates
+cd rust && cargo test --workspace        # Rust dev loop (parity target)
+cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings  # Rust CI gates
+cd rust && cargo build --release         # → rust/target/release/mdfu
+make parity                              # Go-vs-Rust differential harness (frozen baseline)
 make act-ci                              # full local CI (gofmt/vet/race/coverage/cross-build)
+make act-rust                            # Rust workflow locally (act)
 make act-docs                            # Starlight build + internal link check
 make act-all                             # every locally-runnable workflow
 cd website && npm ci && npm run dev      # docs preview (Node 22)
@@ -106,6 +128,7 @@ cd website && npm ci && npm run dev      # docs preview (Node 22)
 ## NOTES
 
 - Branch `main`; `.omo/` holds plan/task evidence (gitignored).
+- Release vs parity: releases are built from `rust/` (`.goreleaser.yaml`), but the Go tree is still the behavioral reference — `make parity` diffs the frozen-SHA Go build against the Rust build, and `ci.yml`/`codeql.yml` keep Go green until todo 37 removes the tree.
 - Note picker seams are injected, never imported: `FilterFunc` (filtering) and `ReloadFunc func(path string) (*model.Document, error)` (re-parse after `$EDITOR` exits). `internal/tui` imports only `model` + stdlib + bubbletea; `cmd/mdfu` wires `Config.Reload` to `reloadDocument` in `pipeline.go`.
 - `scan.Options.RespectGitignore` is a no-op (PLAN.md T6) — flag exists, behavior doesn't.
 - `--limit`: filter mode defaults 20, TUI 50; `0`/negative = unlimited.

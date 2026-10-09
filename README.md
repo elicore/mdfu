@@ -135,9 +135,8 @@ on `main`; changes touching code, docs, or CI are validated locally first.
 make act-list          # list workflows/jobs act can run
 make act-ci            # gofmt, vet, race tests, coverage, cross-build matrix
 make act-rust          # Rust workspace: fmt, clippy, tests, release build
-make act-module-guard  # single-module layout guard
+make act-module-guard  # Go module + Rust workspace layout guard
 make act-docs          # Starlight build + internal link check
-make act-release-check # GoReleaser snapshot (Go)
 make parity            # Go-vs-Rust differential parity harness
 make act-all           # all of the above
 ```
@@ -148,9 +147,9 @@ are tested as CI would see them.
 
 These workflows cannot run locally — they need GitHub-hosted backends or a
 macOS runner: `codeql.yml`, `pages.yml` (deploy job), `release-please.yml`,
-`brew.yml`, `release.yml` (requires a real tag), and `rust-release.yml` (needs
-`rustup` + `zig` + `cargo-zigbuild` in the act container). See the docs site's
-[Local CI](/mdfu/project/local-ci/) page for the full rationale.
+`brew.yml`, `release.yml` (requires a real tag), and `release-check.yml` (Rust
+snapshot: needs `rustup` + `zig` + `cargo-zigbuild` in the act container). See
+the docs site's [Local CI](/mdfu/project/local-ci/) page for the full rationale.
 
 ## Docs
 

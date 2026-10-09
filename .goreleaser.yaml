@@ -1,27 +1,41 @@
+# GoReleaser configuration for `mdfu`, built from the Rust workspace (`rust/`).
+#
+# Promoted from `.goreleaser.rust.yaml` in the todo-36 cutover: the Rust build
+# is now the release source for release.yml / release-check.yml / brew.yml /
+# release-please.yml. The Go tree remains the parity reference until todo 37,
+# but it is no longer a release gate. Artifact naming must stay identical to
+# the historical Go path so `Casks/mdfu.rb` keeps pointing at real assets:
+#
+#   mdfu_<version>_<os>_<arch>.tar.gz   (zip on Windows)
+#
+# GoReleaser's Rust builder requires rustup (it runs `rustup target add`),
+# zig and cargo-zigbuild. The before hook installs cargo-zigbuild; rustup and
+# zig must already be on PATH (CI installs all three; see release.yml).
 version: 2
 
 project_name: mdfu
 
 before:
   hooks:
-    - go mod tidy
+    - cargo install --locked cargo-zigbuild
 
 builds:
   - id: mdfu
-    main: ./cmd/mdfu
+    builder: rust
     binary: mdfu
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w -X main.version={{ .Version }}
-    mod_timestamp: "{{ .CommitTimestamp }}"
+    # Cargo workspace root; the workspace has three members, so the CLI crate
+    # must be selected explicitly (GoReleaser also enforces this).
+    dir: rust
+    flags:
+      - --release
+      - --package=mdfu-cli
+    targets:
+      - x86_64-unknown-linux-gnu
+      - aarch64-unknown-linux-gnu
+      - x86_64-apple-darwin
+      - aarch64-apple-darwin
+      - x86_64-pc-windows-gnu
+      - aarch64-pc-windows-gnullvm
 
 archives:
   - id: mdfu

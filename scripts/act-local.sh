@@ -12,17 +12,20 @@
 #   ./scripts/act-local.sh rust
 #   ./scripts/act-local.sh module-guard
 #   ./scripts/act-local.sh docs
-#   ./scripts/act-local.sh release-check
 #   ./scripts/act-local.sh all
 #
 # Workflows that cannot run locally (GitHub-hosted backends / macOS runners):
 # codeql.yml, pages.yml (deploy), release-please.yml, brew.yml, release.yml.
+# release-check.yml now runs the GoReleaser Rust snapshot, which needs rustup,
+# zig and cargo-zigbuild inside the container; run it natively instead
+# (goreleaser release --snapshot --clean --skip=publish), or preview its setup
+# with `act pull_request -n -W .github/workflows/release-check.yml`.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-RUNNABLE=(ci rust module-guard docs release-check)
+RUNNABLE=(ci rust module-guard docs)
 declare -A WORKFLOW=(
   [ci]=".github/workflows/ci.yml"
   [rust]=".github/workflows/rust.yml"
@@ -49,14 +52,14 @@ Usage: $(basename "$0") [command]
 
 Commands:
   list           List all workflows/jobs act can see
-  ci             Run CI (test + cross-build matrix)
+  ci             Run CI (Go test + cross-build matrix; kept until todo 37)
   rust           Run the Rust workspace CI (fmt, clippy, tests, release build)
-  module-guard   Run single-module layout guard
+  module-guard   Run the Go module + Rust workspace layout guard
   docs           Build the Starlight site + offline internal link check
-  release-check  Run GoReleaser snapshot build
   all            Run every locally-runnable workflow (default)
 
-Locally unsupported: codeql, pages/deploy, release-please, brew, release.
+Locally unsupported: release-check (Rust snapshot needs rustup+zig+cargo-zigbuild),
+codeql, pages/deploy, release-please, brew, release.
 EOF
 }
 
@@ -171,6 +174,9 @@ main() {
       run_list
       exit 0
       ;;
+    release-check)
+      die "'release-check' now runs the GoReleaser Rust snapshot and needs rustup + zig + cargo-zigbuild in the container; run it natively: goreleaser release --snapshot --clean --skip=publish"
+      ;;
   esac
 
   ensure_docker
@@ -181,7 +187,7 @@ main() {
   FAILED=0
 
   case "$cmd" in
-    ci | rust | module-guard | docs | release-check)
+    ci | rust | module-guard | docs)
       run_workflow "$cmd"
       ;;
     all)

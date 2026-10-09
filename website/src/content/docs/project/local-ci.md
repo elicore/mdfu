@@ -50,9 +50,8 @@ Docker is required. `act` is auto-installed on first use (Homebrew, then
 make act-list          # list workflows/jobs act can run
 make act-ci            # gofmt, vet, race tests, coverage, cross-build matrix
 make act-rust          # Rust workspace: fmt, clippy, tests, release build
-make act-module-guard  # single-module layout guard
+make act-module-guard  # Go module + Rust workspace layout guard
 make act-docs          # Starlight build + internal link check
-make act-release-check # GoReleaser snapshot (Go)
 make parity            # Go-vs-Rust differential parity harness
 make act-all           # all of the above
 ```
@@ -83,9 +82,9 @@ locally:
 | `release-please.yml` | Drives GitHub releases/PRs via the GitHub API. |
 | `brew.yml` | Runs on `macos-latest` and needs real release assets. |
 | `release.yml` | Triggered by a real version tag and publishes a release. |
-| `rust-release.yml` | Needs `rustup`, `zig`, and `cargo-zigbuild` in the act container; snapshot-only, so it is not part of `make act-all`. |
+| `release-check.yml` | Needs `rustup`, `zig`, and `cargo-zigbuild` in the act container; it is not part of `make act-all`. |
 
-`release-check.yml` covers the GoReleaser build path locally; the publish steps
-are the only part that requires GitHub. `rust-release.yml` exercises the Rust
-GoReleaser builder and is previewed with `act workflow_dispatch -n` rather than
-a full local run.
+`release-check.yml` now runs the Rust GoReleaser snapshot (the todo-36 cutover
+promoted the Rust build to the release source); it is previewed with `act
+pull_request -n` rather than a full local run. Release workflows build from
+`rust/`; the Go tree stays the parity reference until todo 37.
