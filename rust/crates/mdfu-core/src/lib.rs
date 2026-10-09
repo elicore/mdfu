@@ -6,6 +6,8 @@
 
 pub mod model;
 pub mod open;
+pub mod output;
+pub mod scan;
 pub mod theme;
 
 /// The workspace version of `mdfu-core`.
