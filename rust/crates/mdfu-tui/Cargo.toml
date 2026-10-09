@@ -15,6 +15,9 @@ regex = "1"
 # ratatui 0.30.2 is the newest line; tui-input 0.15.5 requires ^0.30.2 and
 # tui-markdown 0.3.10 requires ^0.30, so the three resolve together.
 ratatui = "0.30.2"
+# The task body editor. Its default `crossterm` feature pulls ratatui-crossterm
+# 0.1.x, the same backend crate ratatui 0.30 re-exports, so `KeyEvent` unifies.
+ratatui-textarea = "0.9.3"
 tui-input = "0.15.5"
 # No default features: `highlight-code` would bake syntect's Base16OceanDark
 # colors into code blocks, and widgets must take every color from the theme.

@@ -11,14 +11,12 @@
 //! picker's filter type, and this module shares no filter global with the
 //! picker (the no-global-filter guard test lands with todo 27).
 //!
-//! Modes: `browse` (default), `filter` (`/`), and `help` (`?`). The
-//! `edit_title`/`edit_body`/`move_prompt` modes exist in [`Mode`] and their
-//! state (`editor_text`, `pending_edit`, `move_input`, `new_task`, `base`,
-//! `task_config`, `action`) is defined on [`App`], but their event loops and
-//! every disk write belong to todos 25-26: the browse keys
-//! `o`/`t`/`e`/`n`/`m`/`a` are reserved and carry no behavior in this slice.
-//! [`Msg::EditorFinished`] and [`Cmd::ExecEditor`] are the reserved
-//! message/command seam for the same todos.
+//! Modes: `browse` (default), `filter` (`/`), `help` (`?`), and the edit
+//! modes — title (`t`), body (`e`), new task (`n`), and the move prompt (`m`) —
+//! whose key loops live in `edit`. Every disk write and the scope reload live
+//! in `actions`: `x` flips the checkbox through the engine, `o` runs
+//! `$EDITOR +<line> <file>`, and `a` archives a done task; [`Msg::EditorFinished`]
+//! reloads the scope so external edits appear.
 //!
 //! Layout mirrors Go `renderTaskBrowse`: the filter line is the first row
 //! (filter mode only), the status/help footer the last row, and the list and
@@ -26,8 +24,11 @@
 //! below it. An empty list renders `(no tasks)`; all colors come from
 //! [`mdfu_core::theme::Theme`] (never hardcoded).
 
+mod actions;
+mod edit;
 mod model;
 
+pub use actions::{exec_editor, load_checkboxes};
 pub use model::{
     default_task_filter, default_task_key_map, key_name, App, Binding, Cmd, Config, KeyMap, Mode,
     Msg, TaskFilterFn, WIDE_LAYOUT,

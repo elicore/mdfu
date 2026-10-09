@@ -28,8 +28,9 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use ratatui::Frame;
+use ratatui_textarea::TextArea;
 
-use crate::view_model::{StatusBar, TaskDetail, TaskEditor, TaskRow};
+use crate::view_model::{StatusBar, TaskDetail, TaskRow};
 use crate::widgets::{
     style_from, task_pane_block, SearchInput, StatusBarWidget, TaskDetailWidget, TaskEditorWidget,
     TaskList,
@@ -57,9 +58,9 @@ pub type TaskFilterFn = Box<dyn Fn(&str, &[Task]) -> Vec<usize>>;
 
 /// Current input mode of the task TUI (Go `TaskMode`).
 ///
-/// `Browse` and `Filter` are live in this slice; `Help` renders the full key
-/// help; the edit modes and the move prompt are reserved for todos 25-26 and
-/// cannot be entered yet.
+/// `Browse` and `Filter` are the list modes, `EditTitle`/`EditBody` own the
+/// editor widget, `MovePrompt` owns the move-destination input, and `Help`
+/// renders the full key help (Go `defaultTaskKeyMap`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Mode {
     /// List navigation; the default mode.
@@ -67,11 +68,11 @@ pub enum Mode {
     Browse,
     /// The filter input owns printable keys.
     Filter,
-    /// The title editor (todo 25).
+    /// The title editor (Go `taskModeEditTitle`).
     EditTitle,
-    /// The body editor (todo 25).
+    /// The body editor (Go `taskModeEditBody`).
     EditBody,
-    /// The move-destination prompt (todos 25-26).
+    /// The move-destination prompt (Go `taskModeMovePrompt`).
     MovePrompt,
     /// Full key help; any dismiss key returns to browse.
     Help,
@@ -387,8 +388,9 @@ pub fn default_task_key_map() -> KeyMap {
 /// Task TUI configuration (Go `TaskConfig`).
 ///
 /// `theme` `None` resolves to [`Theme::default`]. `base` and `task_config` are
-/// the resolved task scope the write/reload actions operate against; they are
-/// carried for todos 25-26 and unused by the browse/filter slice.
+/// the resolved task scope the write/reload actions operate against; `editor`
+/// carries the resolved `$EDITOR` command line (the CLI reads the process
+/// environment, the model never does).
 #[derive(Default)]
 pub struct Config {
     /// Theme override; `None` resolves to [`Theme::default`].
@@ -401,6 +403,10 @@ pub struct Config {
     pub base: String,
     /// Engine task configuration used by the write/reload actions.
     pub task_config: task_config::Config,
+    /// Resolved `$EDITOR` command line. `None` or blank reports
+    /// `"$EDITOR is not set"` on `o`, exactly like the Go TUI reads
+    /// `os.Getenv("EDITOR")` at press time; the CLI injects the value.
+    pub editor: Option<String>,
 }
 
 /// The task TUI state (Go `TaskModel`).
@@ -436,6 +442,9 @@ pub struct App {
     // --- extension state owned by todos 25 (editors) and 26 (actions) ---
     /// Title/body editor buffer (Go `editor` textarea); todo 25 seeds it.
     pub(crate) editor_text: String,
+    /// The interactive editor widget; `editor_text` mirrors its value after
+    /// every input event.
+    pub(crate) textarea: TextArea<'static>,
     /// Widget text seeded when an edit mode is entered (Go `pendingEdit`).
     pub(crate) pending_edit: String,
     /// Move-destination input (Go `moveInput`); the prompt is todo 25.
@@ -446,6 +455,9 @@ pub struct App {
     pub(crate) base: String,
     /// Engine task configuration (Go `taskCfg`).
     pub(crate) task_config: task_config::Config,
+    /// Resolved `$EDITOR` command line (Go reads `os.Getenv` directly; the
+    /// crate stays environment-agnostic and takes it from [`Config`]).
+    pub(crate) editor: Option<String>,
     /// Last action name reported through the final result (Go `action`).
     pub(crate) action: String,
 }
@@ -480,11 +492,13 @@ impl App {
             error: None,
             aborted: false,
             editor_text: String::new(),
+            textarea: TextArea::default(),
             pending_edit: String::new(),
             move_input: SearchInput::new(),
             new_task: false,
             base: config.base,
             task_config: config.task_config,
+            editor: config.editor,
             action: String::new(),
         };
         app.refilter();
@@ -502,24 +516,20 @@ impl App {
     /// Handles one message, returning a driver effect when one is needed (Go
     /// `TaskModel.Update` returning a `tea.Cmd`).
     ///
-    /// Key handling dispatches on the mode. The edit modes and the move prompt
-    /// are reserved for todos 25-26: their keys are dropped here (the modes
-    /// cannot be entered yet), and [`Msg::EditorFinished`] is inert until the
-    /// actions todo wires the reload.
-    // By-value matches Go's `tea.Msg` flow and the note picker's update; the
-    // EditorFinished payload is consumed by todo 26, so this bound cannot be
-    // narrowed without breaking API parity.
-    #[allow(clippy::needless_pass_by_value)]
+    /// Key handling dispatches on the mode: browse/filter/help plus the title
+    /// and body editors and the move prompt (see `super::edit`). A finished
+    /// `$EDITOR` run (see `super::actions`) sets the status line on error and
+    /// reloads the scope on success.
+    // By-value matches Go's `tea.Msg` flow and the note picker's update.
     #[must_use = "the returned command drives quitting or the external editor"]
     pub fn update(&mut self, msg: Msg) -> Option<Cmd> {
         match msg {
             Msg::Key(key) => match self.mode {
                 Mode::Browse => self.update_browse(&key),
                 Mode::Filter => self.update_filter(&key),
+                Mode::EditTitle | Mode::EditBody => self.update_edit(&key),
+                Mode::MovePrompt => self.update_move(&key),
                 Mode::Help => self.update_help(&key),
-                // todo 25 owns updateEdit/updateMove (tasks_edit.go /
-                // tasks_edit_body.go ports); no mode above enters these yet.
-                Mode::EditTitle | Mode::EditBody | Mode::MovePrompt => None,
             },
             Msg::Resize { width, height } => {
                 self.width = width;
@@ -528,14 +538,16 @@ impl App {
                 self.ensure_visible();
                 None
             }
-            // todo 26 owns the post-$EDITOR reload and error status.
-            Msg::EditorFinished { .. } => None,
+            Msg::EditorFinished { error } => {
+                self.editor_finished(error);
+                None
+            }
         }
     }
 
     /// Browse-mode keys, checked in the Go order so a browse-mode `x` toggles
-    /// done instead of typing. `o`/`t`/`e`/`n`/`m`/`a` are reserved for todos
-    /// 25-26 and intentionally fall through.
+    /// done instead of typing. `t`/`e`/`n`/`m` open the editors and the move
+    /// prompt; `x`/`o`/`a` run the disk-backed actions from [`super::actions`].
     fn update_browse(&mut self, key: &KeyEvent) -> Option<Cmd> {
         if self.keys.quit.matches(key) {
             self.aborted = true;
@@ -590,12 +602,35 @@ impl App {
             return None;
         }
         if self.keys.toggle_done.matches(key) {
-            self.toggle_done();
+            self.toggle_done_task();
             return None;
         }
         if self.keys.toggle_blk.matches(key) {
             self.show_blocked = !self.show_blocked;
             self.refilter();
+            return None;
+        }
+        if self.keys.open.matches(key) {
+            return self.open_in_editor_cmd();
+        }
+        if self.keys.edit_title.matches(key) {
+            self.enter_edit(Mode::EditTitle);
+            return None;
+        }
+        if self.keys.edit_body.matches(key) {
+            self.enter_edit(Mode::EditBody);
+            return None;
+        }
+        if self.keys.new.matches(key) {
+            self.enter_new_task();
+            return None;
+        }
+        if self.keys.move_to.matches(key) {
+            self.enter_move();
+            return None;
+        }
+        if self.keys.archive.matches(key) {
+            self.archive_focused();
             return None;
         }
         if self.keys.help.matches(key) {
@@ -652,11 +687,12 @@ impl App {
 
     /// Rebuilds the visible index list from the injected filter plus the
     /// done/blocked gates, keeping the cursor on the same task when it survives
-    /// (Go `refilter`).
+    /// (Go `refilter`). The edit module calls this after a write mutates the
+    /// task set.
     ///
     /// Output is defensively bounded to valid task indices so a buggy injected
     /// filter can never make the view index out of bounds.
-    fn refilter(&mut self) {
+    pub(crate) fn refilter(&mut self) {
         let previous = self
             .filtered
             .get(self.cursor)
@@ -712,7 +748,7 @@ impl App {
 
     /// Scrolls the offset so the cursor stays inside the viewport (Go
     /// `ensureVisible`).
-    fn ensure_visible(&mut self) {
+    pub(crate) fn ensure_visible(&mut self) {
         let max_rows = self.visible_rows();
         if self.cursor < self.offset {
             self.offset = self.cursor;
@@ -772,10 +808,10 @@ impl App {
     }
 
     /// Flips the focused item's done state in memory (Go `toggleDone`). The
-    /// disk write is todo 26's job; this keeps the model headless-testable and,
-    /// like Go, does not refilter (a row stays visible until the next
-    /// refilter).
-    fn toggle_done(&mut self) {
+    /// disk write lives in [`super::actions`]; this in-memory fallback keeps
+    /// the model headless-testable and, like Go, does not refilter (a row stays
+    /// visible until the next refilter).
+    pub(crate) fn toggle_done(&mut self) {
         let Some(index) = self.filtered.get(self.cursor).copied() else {
             return;
         };
@@ -985,15 +1021,11 @@ impl App {
         }
     }
 
-    /// Edit-mode frame: the editor buffer plus the save/cancel status. The
-    /// metadata side panel and the body re-indent preview are todo 25's.
+    /// Edit-mode frame: the editor buffer, the metadata side panel (title
+    /// mode), and the save/cancel status. The snapshot comes from the edit
+    /// module so the widget layer never parses a header.
     fn render_editor(&self, area: Rect, buf: &mut Buffer) {
-        let editor = TaskEditor {
-            text: self.editor_text.clone(),
-            is_body: self.mode == Mode::EditBody,
-            status: self.status.clone(),
-            ..TaskEditor::default()
-        };
+        let editor = self.task_editor_snapshot();
         let widget = TaskEditorWidget::new(&editor, &self.theme);
         (&widget).render(area, buf);
     }
@@ -1954,10 +1986,11 @@ mod tests {
         assert_eq!(app.action(), "");
         assert_eq!(app.error(), None);
         assert!(!app.is_confirmed());
-        // The reserved message/command seam is inert in this slice.
+        // The $EDITOR reload seam is inert until todo 26 wires it.
         assert_eq!(apply(&mut app, Msg::EditorFinished { error: None }), None);
-        assert_eq!(apply(&mut app, rune_key('t')), None, "t is todo 25's");
-        assert_eq!(app.mode(), Mode::Browse);
+        // `t` opens the title editor owned by todo 25.
+        assert_eq!(apply(&mut app, rune_key('t')), None);
+        assert_eq!(app.mode(), Mode::EditTitle);
     }
 
     #[test]
