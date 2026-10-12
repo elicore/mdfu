@@ -26,14 +26,14 @@ Colors are xterm 256-color palette indices, given as strings (quote them in YAML
 
 | Key | Values | Default | Meaning |
 |---|---|---|---|
-| `markdown_style` | `dark` \| `light` | auto (empty) | Glamour style for the preview body; empty lets glamour pick. |
+| `markdown_style` | `dark` \| `light` | auto (empty) | Accepted but inert in the Rust port: the preview renders with structural modifiers only and no color palette, so the glamour style is never applied (see the parity notes). |
 | `show_frontmatter` | bool | `true` | Frontmatter block visible at startup; `ctrl+f` toggles it live. |
 | `body_lines` | int 1..200 | `30` | Body lines shown in the preview. |
 | `cursor_color` | color | `212` | Cursor row in the result list (bold). |
 | `selected_color` | color | `82` | Multi-selected rows in the result list (bold). |
 | `title_color` | color | `212` | Document title in the preview (bold). |
 | `filename_color` | color | `244` | Filename header at the top of the preview. |
-| `preview_header_color` | color | unset (bold + underline) | Preview header style; setting it adds this foreground. |
+| `preview_header_color` | color | unset (bold + underline) | Accepted but inert in the Rust port: no renderer reads it (only the theme test does), matching the Go baseline (see the parity notes). |
 | `frontmatter_key_color` | color | `245` | Labels of the frontmatter rows. |
 | `dim_faint` | bool | `true` | Faint rendering for dimmed text such as status hints. |
 | `pill_foreground` | color | `231` | Tag/list pill text. |

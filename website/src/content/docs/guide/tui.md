@@ -9,7 +9,7 @@ Launch with no query:
 mdfu [--root DIR] [--hidden] [--limit N] [--archived] [--no-hyperlinks]
 ```
 
-The picker opens in **list mode**: the search box is hidden and the first line is a result. Press `/` to reveal and focus the search box, then type to narrow — bare words fuzzy, `key:value` hard-filters via the live `FilterFunc` (`scan → parse → query → rank` on every keystroke). Query terms are emphasized (yellow background) in both the result list and the preview pane; matches compose with the markdown syntax highlighting. Editing the query re-anchors the cursor: if the selected document survives into the new results it stays selected, otherwise the cursor resets to the top. `Enter` prints the selection (pipeable to editors/fzf flows).
+The picker opens in **list mode**: the search box is hidden and the first line is a result. Press `/` to reveal and focus the search box, then type to narrow — bare words fuzzy, `key:value` hard-filters via the live `FilterFunc` (`scan → parse → query → rank` on every keystroke). Query terms are emphasized (yellow background) in both the result list and the preview pane; emphasis composes with the preview's modifier-only markdown styling. A result whose title did not match the query shows a body excerpt in place of its path. Editing the query re-anchors the cursor: if the selected document survives into the new results it stays selected, otherwise the cursor resets to the top. `Enter` prints the selection (pipeable to editors/fzf flows).
 
 ## Interaction modes
 
@@ -31,7 +31,7 @@ The picker opens in **list mode**: the search box is hidden and the first line i
 | `ctrl+c` | Abort (no output). |
 | `tab` | Toggle multi-select on cursor item (the checkbox column appears only once a selection exists). |
 | `ctrl+a` | Toggle archived visibility (default hidden). |
-| `ctrl+p` | Toggle preview pane (glamour-highlighted markdown preview of the first 30 body lines + filename header, title, and frontmatter rows; side-by-side when ≥100 cols). |
+| `ctrl+p` | Toggle preview pane (rendered markdown preview of the first 30 body lines + filename header, title, and frontmatter rows; side-by-side when ≥100 cols). |
 | `ctrl+f` | Toggle the frontmatter block in the preview (the labeled rows between the title and the body). The startup default comes from `show_frontmatter` in the [Configuration](/guide/configuration/) file. |
 | `ctrl+o` | Open the previewed document's first web link (its `Resource`, else the first link in the body) in the default browser. |
 | other | Search mode: edit the query and refilter. List mode: ignored. |
