@@ -26,7 +26,7 @@ use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Widget;
+use ratatui::widgets::{Block, Widget};
 use ratatui::Frame;
 use ratatui_textarea::TextArea;
 
@@ -772,6 +772,10 @@ impl App {
         if self.mode == Mode::Filter {
             reserved += 1;
         }
+        if self.mode == Mode::MovePrompt {
+            // The destination prompt and its key hint sit above the body.
+            reserved += 2;
+        }
         if self.width < WIDE_LAYOUT {
             reserved += self.detail_rows();
         }
@@ -1003,9 +1007,9 @@ fn task_key(task: &Task) -> TaskKey {
 impl App {
     /// Paints one task-TUI frame (Go `TaskModel.View`).
     ///
-    /// Edit modes render the editor frame through [`TaskEditorWidget`]; every
-    /// other mode — including the move prompt, exactly like Go — renders the
-    /// browse frame.
+    /// Edit modes render the editor frame through [`TaskEditorWidget`]; the
+    /// move prompt renders its destination prompt and hint above the browse
+    /// body; every other mode renders the browse frame.
     pub fn view(&self, frame: &mut Frame<'_>) {
         frame.render_widget(self, frame.area());
     }
@@ -1017,8 +1021,64 @@ impl App {
         }
         match self.mode {
             Mode::EditTitle | Mode::EditBody => self.render_editor(area, buf),
+            Mode::MovePrompt => self.render_move(area, buf),
             _ => self.render_browse(area, buf),
         }
+    }
+
+    /// Move-prompt frame: the destination prompt (label plus the focused
+    /// input) and its key hint, over the browse body and footer (Go
+    /// `renderTaskMove`), so `m` is never a blind edit.
+    fn render_move(&self, area: Rect, buf: &mut Buffer) {
+        let chunks = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(area);
+        let [prompt, hint, body, footer] = chunks.as_ref() else {
+            return;
+        };
+        self.render_move_line(*prompt, buf);
+        self.render_move_hint(*hint, buf);
+        self.render_body(*body, buf);
+        self.render_footer(*footer, buf);
+    }
+
+    /// Move prompt line: a `move to:` label and the focused destination input.
+    fn render_move_line(&self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+        let label_text = "move to: ";
+        let label = Line::from(Span::styled(label_text, style_from(&self.theme.task_id)));
+        buf.set_line(area.x, area.y, &label, area.width);
+        let offset = u16::try_from(label_text.len()).unwrap_or(u16::MAX);
+        if area.width <= offset {
+            return;
+        }
+        let input_area = Rect::new(area.x + offset, area.y, area.width - offset, 1);
+        if self.move_input.value().is_empty() {
+            let placeholder = Line::from(Span::styled(
+                "destination file path",
+                style_from(&self.theme.dim),
+            ));
+            buf.set_line(input_area.x, input_area.y, &placeholder, input_area.width);
+        }
+        (&self.move_input).render(input_area, buf);
+    }
+
+    /// Move prompt hint line: the keys that apply to the destination prompt.
+    fn render_move_hint(&self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+        let hint = Line::from(Span::styled(
+            "enter: move • esc: cancel",
+            style_from(&self.theme.dim),
+        ));
+        buf.set_line(area.x, area.y, &hint, area.width);
     }
 
     /// Edit-mode frame: the editor buffer, the metadata side panel (title
@@ -1118,12 +1178,24 @@ impl App {
         self.render_detail_pane(detail_area, buf);
     }
 
+    /// The frame for one body pane. The focused pane wears the theme's
+    /// `task_selected` border so `tab`'s pane toggle is visible; the other pane
+    /// keeps the theme's `task_pane` border.
+    fn pane_block(&self, focused: bool) -> Block<'static> {
+        let block = task_pane_block(&self.theme);
+        if focused {
+            block.border_style(style_from(&self.theme.task_selected))
+        } else {
+            block
+        }
+    }
+
     /// One framed list pane; an empty list renders `(no tasks)`.
     fn render_list_pane(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        let block = task_pane_block(&self.theme);
+        let block = self.pane_block(self.focus_pane == 0);
         let inner = block.inner(area);
         block.render(area, buf);
         if inner.width == 0 || inner.height == 0 {
@@ -1146,7 +1218,7 @@ impl App {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        let block = task_pane_block(&self.theme);
+        let block = self.pane_block(self.focus_pane == 1);
         let inner = block.inner(area);
         block.render(area, buf);
         if inner.width == 0 || inner.height == 0 {
@@ -1709,6 +1781,74 @@ mod tests {
     }
 
     #[test]
+    fn task_ui_view_tab_restyles_focused_pane() {
+        let mut app = view_app();
+        resize(&mut app, 120, 40);
+
+        let corners = |buffer: &Buffer| -> Vec<u16> {
+            (0..120)
+                .filter(|&x| buffer.cell((x, 0)).is_some_and(|cell| cell.symbol() == "╭"))
+                .collect()
+        };
+
+        let before = render_buffer(&app, 120, 40);
+        let before_corners = corners(&before);
+        assert_eq!(before_corners.len(), 2, "wide layout joins two panes");
+        assert_eq!(
+            before.cell((before_corners[0], 0)).expect("list corner").fg,
+            Color::Indexed(82),
+            "list pane is focused by default"
+        );
+        assert_eq!(
+            before
+                .cell((before_corners[1], 0))
+                .expect("detail corner")
+                .fg,
+            Color::Indexed(238),
+            "detail pane is unfocused by default"
+        );
+
+        let _ = apply(&mut app, key(KeyCode::Tab));
+        assert_eq!(app.focus_pane(), 1);
+
+        let after = render_buffer(&app, 120, 40);
+        let after_corners = corners(&after);
+        assert_eq!(
+            after.cell((after_corners[0], 0)).expect("list corner").fg,
+            Color::Indexed(238),
+            "tab unfocuses the list pane"
+        );
+        assert_eq!(
+            after.cell((after_corners[1], 0)).expect("detail corner").fg,
+            Color::Indexed(82),
+            "tab focuses the detail pane"
+        );
+    }
+
+    #[test]
+    fn task_ui_view_move_prompt_renders_destination_input() {
+        let mut app = view_app();
+        resize(&mut app, 120, 40);
+        let _ = apply(&mut app, rune_key('m'));
+        assert_eq!(app.mode(), Mode::MovePrompt);
+
+        let empty = render_lines(&app, 120, 40);
+        let text = empty.join("\n");
+        assert!(text.contains("move to:"), "prompt label renders:\n{text}");
+        assert!(
+            text.contains("enter: move") && text.contains("esc: cancel"),
+            "prompt hint renders:\n{text}"
+        );
+
+        app.move_input.set_value("target.md");
+        let typed = render_lines(&app, 120, 40);
+        assert!(
+            typed.iter().any(|line| line.contains("target.md")),
+            "typed destination renders:\n{typed:?}"
+        );
+    }
+
+    #[test]
     fn task_ui_help_mode_toggles() {
         let mut app = app();
         let _ = apply(&mut app, rune_key('?'));
@@ -2006,5 +2146,65 @@ mod tests {
         let text = lines.join("\n");
         assert!(text.contains("first body line"), "detail body:\n{text}");
         assert!(text.contains("second body line"), "detail body:\n{text}");
+    }
+
+    /// Minimal self-cleaning temp dir for the move-cancel test; the crate has
+    /// no `tempfile` dev-dependency.
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("mdfu-tui-model-{}-{unique}", std::process::id()));
+            std::fs::create_dir_all(&path).expect("create temp dir");
+            Self(path)
+        }
+
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn task_ui_move_prompt_esc_cancels_without_writing() {
+        let dir = TempDir::new();
+        let source = dir.path().join("tasks.md");
+        let contents = "- [ ] PRJ-001 alpha\n";
+        std::fs::write(&source, contents).expect("write source");
+
+        let task = Task {
+            id: "PRJ-001".to_owned(),
+            title: "alpha".to_owned(),
+            file: source.to_string_lossy().into_owned(),
+            ..Task::default()
+        };
+        let mut app = App::with_default_filter(vec![task], Config::default());
+
+        let _ = apply(&mut app, rune_key('m'));
+        assert_eq!(app.mode(), Mode::MovePrompt);
+        app.move_input
+            .set_value(dir.path().join("target.md").to_string_lossy());
+
+        let _ = apply(&mut app, key(KeyCode::Esc));
+        assert_eq!(app.mode(), Mode::Browse);
+        assert_eq!(app.status(), "cancelled");
+        assert!(!app.move_input.focused());
+        assert_eq!(
+            std::fs::read_to_string(&source).expect("read source"),
+            contents,
+            "esc must not touch the source file"
+        );
+        assert!(
+            !dir.path().join("target.md").exists(),
+            "esc must not create the destination"
+        );
     }
 }

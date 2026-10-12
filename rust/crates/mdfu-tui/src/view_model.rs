@@ -29,6 +29,11 @@ pub struct NoteRow {
     pub doc_type: String,
     /// Body-only match excerpt for the active query; empty when unused.
     pub snippet: String,
+    /// Ascending byte offsets of the query's matched characters in `title`
+    /// (empty when the title did not match); drives the list's match
+    /// emphasis. Populated by the picker from the filter hits, never derived
+    /// from a [`Document`] alone.
+    pub matched_indexes: Vec<usize>,
     /// Archived state, following [`Document::is_archived`] (explicit flag or
     /// `status: archived`).
     pub archived: bool,
@@ -41,6 +46,7 @@ impl From<&Document> for NoteRow {
             path: doc.path.clone(),
             doc_type: doc.doc_type.clone(),
             snippet: String::new(),
+            matched_indexes: Vec::new(),
             archived: doc.is_archived(),
         }
     }
@@ -51,6 +57,13 @@ impl NoteRow {
     #[must_use]
     pub fn with_snippet(mut self, snippet: impl Into<String>) -> Self {
         self.snippet = snippet.into();
+        self
+    }
+
+    /// Attaches the title match positions computed by the picker.
+    #[must_use]
+    pub fn with_positions(mut self, matched_indexes: Vec<usize>) -> Self {
+        self.matched_indexes = matched_indexes;
         self
     }
 
@@ -69,7 +82,8 @@ impl NoteRow {
 }
 
 /// Snapshot of the document preview pane: filename bar, title block,
-/// frontmatter rows, markdown body, and hyperlink preference.
+/// frontmatter rows, markdown body, hyperlink preference, and the query terms
+/// the body emphasizes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewBlock {
     /// Basename of the document path (empty when the path is empty).
@@ -82,6 +96,10 @@ pub struct PreviewBlock {
     pub body_markdown: String,
     /// Whether web links should render as OSC 8 hyperlinks.
     pub hyperlinks: bool,
+    /// Query terms emphasized in the rendered body (Go `Model.terms`). Plain
+    /// data: the highlight SGR is resolved from the theme at render time,
+    /// never baked in here.
+    pub terms: Vec<String>,
 }
 
 impl From<&Document> for PreviewBlock {
@@ -92,6 +110,7 @@ impl From<&Document> for PreviewBlock {
             fields: frontmatter_fields(doc),
             body_markdown: doc.body.clone(),
             hyperlinks: true,
+            terms: Vec::new(),
         }
     }
 }
@@ -102,6 +121,14 @@ impl PreviewBlock {
     #[must_use]
     pub fn with_hyperlinks(mut self, hyperlinks: bool) -> Self {
         self.hyperlinks = hyperlinks;
+        self
+    }
+
+    /// Sets the query terms emphasized in the body (empty by default, like
+    /// the picker's empty query).
+    #[must_use]
+    pub fn with_terms(mut self, terms: Vec<String>) -> Self {
+        self.terms = terms;
         self
     }
 
@@ -1082,6 +1109,7 @@ mod tests {
                 path: String::new(),
                 doc_type: String::new(),
                 snippet: String::new(),
+                matched_indexes: Vec::new(),
                 archived: false,
             }
         );

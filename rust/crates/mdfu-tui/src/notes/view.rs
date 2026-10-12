@@ -14,6 +14,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use ratatui::Frame;
 
+use mdfu_core::output;
+
 use super::App;
 use crate::preview::{self, PreviewLayout};
 use crate::view_model::{NoteRow, StatusBar};
@@ -96,7 +98,7 @@ impl App {
             .get(self.cursor)
             .and_then(|index| self.items.get(*index));
         self.preview
-            .render(area, buf, doc, &self.theme, &self.terms);
+            .render(area, buf, doc, &self.theme, &self.terms, self.hyperlinks);
     }
 
     /// Go `previewRows` uses the full terminal height; a headless render (no
@@ -137,11 +139,32 @@ fn render_list(app: &App, area: Rect, buf: &mut Buffer) {
     if area.width == 0 || area.height == 0 {
         return;
     }
+    let has_terms = app.terms.iter().any(|term| !term.trim().is_empty());
     let rows: Vec<NoteRow> = app
         .filtered
         .iter()
-        .filter_map(|index| app.items.get(*index))
-        .map(NoteRow::from)
+        .filter_map(|index| {
+            let doc = app.items.get(*index)?;
+            let positions: Vec<usize> = app.matched.get(index).cloned().unwrap_or_default();
+            let mut row = NoteRow::from(doc).with_positions(positions.clone());
+            // A title hit keeps the path; otherwise the active query earns a
+            // body excerpt. The literal-term check covers filters that match
+            // without positions (e.g. the substring fallback), so they keep
+            // showing the path for title matches exactly like before.
+            let title_hit = !positions.is_empty()
+                || (has_terms
+                    && app.terms.iter().any(|term| {
+                        let term = term.trim().to_lowercase();
+                        !term.is_empty() && row.title.to_lowercase().contains(term.as_str())
+                    }));
+            if !title_hit && has_terms {
+                let excerpt = output::snippet(&doc.body, &app.terms, i32::from(area.width));
+                if !excerpt.is_empty() {
+                    row = row.with_snippet(excerpt);
+                }
+            }
+            Some(row)
+        })
         .collect();
     let selected: Vec<usize> = app
         .filtered
@@ -192,16 +215,20 @@ mod tests {
         }
     }
 
-    fn substring_filter(query: &str, items: &[Document]) -> Vec<usize> {
+    fn substring_filter(query: &str, items: &[Document]) -> Vec<crate::notes::FilterHit> {
+        let hits = |index: usize| crate::notes::FilterHit {
+            index,
+            matched_indexes: Vec::new(),
+        };
         let needle = query.trim().to_lowercase();
         if needle.is_empty() {
-            return (0..items.len()).collect();
+            return (0..items.len()).map(hits).collect();
         }
         items
             .iter()
             .enumerate()
             .filter(|(_, doc)| doc.title.to_lowercase().contains(&needle))
-            .map(|(index, _)| index)
+            .map(|(index, _)| hits(index))
             .collect()
     }
 
@@ -391,5 +418,99 @@ mod tests {
     fn note_view_zero_area_is_safe() {
         let mut app = picker(note_view_docs());
         assert!(render_lines(&mut app, 0, 0).is_empty());
+    }
+
+    #[test]
+    fn note_view_list_shows_snippet_for_body_only_match() {
+        let mut body_only = doc("a.md", "unrelated title");
+        body_only.body = format!("{}kumquat {}", "filler ".repeat(20), "tail ".repeat(20));
+        body_only.search_blob.clone_from(&body_only.body);
+        let items = vec![body_only, doc("b.md", "kumquat title")];
+        let mut app = App::with_default_filter(items, Config::default());
+        app.set_query("kumquat");
+        let text = render_lines(&mut app, 60, 8).join("\n");
+        assert!(
+            text.contains("kumquat") && !text.contains("a.md"),
+            "body-only match shows the excerpt, not the path:\n{text}"
+        );
+        assert!(
+            text.contains("..."),
+            "long body is windowed with an ellipsis:\n{text}"
+        );
+        assert!(text.contains("b.md"), "title match keeps the path:\n{text}");
+    }
+
+    #[test]
+    fn note_view_preview_wires_osc8_and_no_hyperlinks() {
+        let body = "See [Charm](https://charm.sh) now.\n";
+        let mut first = doc("a.md", "alpha");
+        first.body = body.to_owned();
+
+        let mut app = picker(vec![first.clone()]);
+        apply(&mut app, ctrl('p'));
+        let text = render_lines(&mut app, 120, 12).join("\n");
+        assert!(
+            text.contains("\x1b]8;;https://charm.sh\x07"),
+            "preview emits the OSC 8 opener:\n{text:?}"
+        );
+        assert!(
+            !text.contains("(https://charm.sh)"),
+            "URL hidden behind the hyperlink:\n{text:?}"
+        );
+
+        let mut off = App::new(
+            vec![first],
+            Config {
+                no_hyperlinks: true,
+                ..Config::default()
+            },
+            Box::new(substring_filter),
+        );
+        apply(&mut off, ctrl('p'));
+        let text = render_lines(&mut off, 120, 12).join("\n");
+        assert!(
+            text.contains("Charm (https://charm.sh)"),
+            "--no-hyperlinks renders the label url fallback:\n{text:?}"
+        );
+        assert!(
+            !text.contains("\x1b]8;"),
+            "--no-hyperlinks emits no OSC 8:\n{text:?}"
+        );
+    }
+
+    #[test]
+    fn note_view_preview_hyperlink_survives_a_repaint() {
+        // Regression: the diff measures a cell's symbol width, so an OSC 8
+        // smuggled cell used to swallow the cells after it on the next frame.
+        let link_doc = mdfu_core::parse::parse_content(
+            "smoke.md",
+            "---\ntitle: Smoke Note\ntype: Metric\n---\n# Smoke\n\n\
+             See [Charm](https://charm.sh) for the parser track and more text to read.\n",
+        );
+        let mut app = picker(vec![doc("other.md", "other"), link_doc]);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).expect("TestBackend terminal");
+        apply(&mut app, ctrl('p'));
+        terminal.draw(|frame| app.view(frame)).expect("first draw");
+        apply(&mut app, down_key());
+        terminal.draw(|frame| app.view(frame)).expect("second draw");
+        let text =
+            crate::widgets::test_support::buffer_lines(terminal.backend().buffer()).join("\n");
+        assert!(
+            text.contains("\x1b]8;;https://charm.sh\x07"),
+            "hyperlink opens before the label:\n{text:?}"
+        );
+        assert!(
+            text.contains("Charm"),
+            "the whole label repaints:\n{text:?}"
+        );
+        assert!(
+            text.contains("for the parser track and more text to read."),
+            "cells after the link are not swallowed:\n{text:?}"
+        );
+        assert!(
+            !text.contains("https://charm.sh)"),
+            "no fallback while hyperlinks are on:\n{text:?}"
+        );
     }
 }

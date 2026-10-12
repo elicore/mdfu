@@ -178,10 +178,16 @@ mod tests {
 
     /// Query-independent filter that orders documents by title, so a reload
     /// that renames a document visibly re-ranks the visible list.
-    fn title_filter(_query: &str, items: &[Document]) -> Vec<usize> {
+    fn title_filter(_query: &str, items: &[Document]) -> Vec<crate::notes::FilterHit> {
         let mut indices: Vec<usize> = (0..items.len()).collect();
         indices.sort_by_key(|index| items[*index].title.clone());
         indices
+            .into_iter()
+            .map(|index| crate::notes::FilterHit {
+                index,
+                matched_indexes: Vec::new(),
+            })
+            .collect()
     }
 
     fn picker(items: Vec<Document>, config: Config) -> App {

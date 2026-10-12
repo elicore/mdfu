@@ -254,12 +254,52 @@ pub fn matches_doc(doc: &Document, query: Option<&Query>) -> bool {
     true
 }
 
-/// Filters `docs` through [`matches_doc`], scores each bare word, and sorts by
-/// score descending, then most-recent `UpdatedAt`, then `Path` ascending.
+/// A ranked document plus the byte offsets of its matched title characters.
 ///
-/// With no non-empty bare words the filtered docs are sorted by `Path` only.
+/// The additive companion to [`rank`]: same documents, same order, same scores,
+/// but it keeps the positions the fuzzy matcher already computed instead of
+/// discarding them. See [`rank_with_matches`] for the exact string the offsets
+/// index.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RankedDoc<'a> {
+    /// The matched document.
+    pub doc: &'a Document,
+    /// Byte offsets into `doc.title` of the characters the query matched,
+    /// ascending and deduplicated across every non-empty bare word.
+    ///
+    /// Empty when the query has no non-empty bare words, when nothing in the
+    /// title matched, or when only the body/frontmatter matched. The picker
+    /// renders `doc.title` verbatim, so these offsets are directly usable
+    /// against the rendered title; they are **not** offsets into `search_blob`
+    /// or `body`.
+    pub matched_indexes: Vec<usize>,
+}
+
+/// Like [`rank`] but also returns each document's matched title byte offsets.
+///
+/// The returned documents are identical to [`rank`]'s — same hard filter, same
+/// order, same scores — and [`RankedDoc::matched_indexes`] carries the fuzzy
+/// matcher's already-computed positions rather than dropping them.
+///
+/// # Match-position contract
+///
+/// `matched_indexes` are byte offsets into the document's original
+/// [`Document::title`] (not lowered, trimmed, or joined with any other field;
+/// fuzzy offsets stop at a NUL byte, matching [`fuzzy::find`]). For every
+/// non-empty bare word, in query order:
+///
+/// - if the word appears literally in the title (case-insensitively), the
+///   offsets of that first occurrence's characters are added;
+/// - else if the word fuzzy-matches the title — the same [`fuzzy::find`]
+///   fallback [`rank`] uses — the fuzzy subsequence offsets are added;
+/// - if the word matches only the body/frontmatter, it contributes nothing.
+///
+/// The result is sorted ascending and deduplicated. An empty query, a query
+/// with no non-empty bare words, a titleless document, or a title with no match
+/// yields an empty vector. A consumer can therefore slice the rendered title
+/// with these offsets directly.
 #[must_use]
-pub fn rank<'a>(docs: &'a [Document], query: Option<&Query>) -> Vec<&'a Document> {
+pub fn rank_with_matches<'a>(docs: &'a [Document], query: Option<&Query>) -> Vec<RankedDoc<'a>> {
     let filtered: Vec<&Document> = docs.iter().filter(|doc| matches_doc(doc, query)).collect();
     let bare: Vec<&str> = query.map_or_else(Vec::new, |query| {
         query.bare.iter().map(String::as_str).collect()
@@ -267,20 +307,46 @@ pub fn rank<'a>(docs: &'a [Document], query: Option<&Query>) -> Vec<&'a Document
     if !bare.iter().any(|word| !word.trim().is_empty()) {
         let mut by_path = filtered;
         by_path.sort_by(|left, right| left.path.cmp(&right.path));
-        return by_path;
+        return by_path
+            .into_iter()
+            .map(|doc| RankedDoc {
+                doc,
+                matched_indexes: Vec::new(),
+            })
+            .collect();
     }
-    let mut scored: Vec<(&Document, i32)> = Vec::with_capacity(filtered.len());
+    let mut scored: Vec<(RankedDoc<'a>, i32)> = Vec::with_capacity(filtered.len());
     for doc in filtered {
-        if let Some(score) = score_doc(doc, &bare) {
-            scored.push((doc, score));
+        if let Some((score, matched_indexes)) = score_doc(doc, &bare) {
+            scored.push((
+                RankedDoc {
+                    doc,
+                    matched_indexes,
+                },
+                score,
+            ));
         }
     }
-    scored.sort_by(|(left_doc, left_score), (right_doc, right_score)| {
+    scored.sort_by(|(left, left_score), (right, right_score)| {
         right_score
             .cmp(left_score)
-            .then_with(|| compare_recent(left_doc, right_doc))
+            .then_with(|| compare_recent(left.doc, right.doc))
     });
-    scored.into_iter().map(|(doc, _score)| doc).collect()
+    scored.into_iter().map(|(ranked, _score)| ranked).collect()
+}
+
+/// Filters `docs` through [`matches_doc`], scores each bare word, and sorts by
+/// score descending, then most-recent `UpdatedAt`, then `Path` ascending.
+///
+/// With no non-empty bare words the filtered docs are sorted by `Path` only.
+/// A thin projection of [`rank_with_matches`], which additionally returns each
+/// document's matched title offsets.
+#[must_use]
+pub fn rank<'a>(docs: &'a [Document], query: Option<&Query>) -> Vec<&'a Document> {
+    rank_with_matches(docs, query)
+        .into_iter()
+        .map(|ranked| ranked.doc)
+        .collect()
 }
 
 /// Returns `docs` with archived documents removed unless `include_archived`.
@@ -293,9 +359,13 @@ pub fn filter_archived(docs: &[Document], include_archived: bool) -> Vec<&Docume
         .collect()
 }
 
-/// Scores `doc` against every bare word. `None` means a bare word did not match
-/// (AND semantics) and the document must be excluded.
-fn score_doc(doc: &Document, bare: &[&str]) -> Option<i32> {
+/// Scores `doc` against every bare word and collects the title byte offsets the
+/// words matched.
+///
+/// `None` means a bare word did not match (AND semantics) and the document must
+/// be excluded. The score is unchanged from before [`rank_with_matches`]; the
+/// offsets are a pure by-product for highlighting and never affect it.
+fn score_doc(doc: &Document, bare: &[&str]) -> Option<(i32, Vec<usize>)> {
     let mut searchable = doc.search_blob.clone();
     if searchable.trim().is_empty() {
         format!("{} {}", doc.title, doc.body)
@@ -305,6 +375,7 @@ fn score_doc(doc: &Document, bare: &[&str]) -> Option<i32> {
     let searchable = searchable.to_lowercase();
     let title_folded = doc.title.trim().to_lowercase();
     let mut total: i32 = 0;
+    let mut title_offsets: Vec<usize> = Vec::new();
     for word in bare {
         let word = word.trim();
         if word.is_empty() {
@@ -313,14 +384,45 @@ fn score_doc(doc: &Document, bare: &[&str]) -> Option<i32> {
         let needle = word.to_lowercase();
         if searchable.contains(&needle) {
             total += i32::try_from(needle.chars().count()).unwrap_or(i32::MAX);
+            title_offsets.extend(title_substring_offsets(&doc.title, &needle));
         } else {
             let matches = fuzzy::find(word, &[doc.title.as_str()]);
             let found = matches.first()?;
             total += found.score;
+            title_offsets.extend(found.matched_indexes.iter().copied());
         }
         total += title_match_boost(&title_folded, &needle);
     }
-    Some(total)
+    title_offsets.sort_unstable();
+    title_offsets.dedup();
+    Some((total, title_offsets))
+}
+
+/// Byte offsets in `title` of the first case-insensitive occurrence of `needle`.
+///
+/// Offsets are into `title` as stored, so a consumer can slice the rendered
+/// title with them. Empty when `needle` is empty or absent. Case folding mirrors
+/// [`fuzzy::equal_fold`], the same comparison the fuzzy fallback uses.
+fn title_substring_offsets(title: &str, needle: &str) -> Vec<usize> {
+    let needle_chars: Vec<char> = needle.chars().collect();
+    if needle_chars.is_empty() {
+        return Vec::new();
+    }
+    let title_chars: Vec<(usize, char)> = title.char_indices().collect();
+    let Some(last_start) = title_chars.len().checked_sub(needle_chars.len()) else {
+        return Vec::new();
+    };
+    for start in 0..=last_start {
+        let window = &title_chars[start..start + needle_chars.len()];
+        if window
+            .iter()
+            .zip(&needle_chars)
+            .all(|(&(_, candidate), &want)| fuzzy::equal_fold(candidate, want))
+        {
+            return window.iter().map(|&(offset, _)| offset).collect();
+        }
+    }
+    Vec::new()
 }
 
 /// Grades how the lowercased bare word appears in the lowercased title.
@@ -1058,7 +1160,7 @@ mod tests {
         ];
         for (document, query, expected) in cases {
             assert_eq!(
-                score_doc(&document, &[query]),
+                score_doc(&document, &[query]).map(|(score, _)| score),
                 expected,
                 "score_doc({}, {query:?})",
                 document.path
@@ -1074,8 +1176,14 @@ mod tests {
             body: "some body text".to_owned(),
             ..Document::default()
         };
-        assert_eq!(score_doc(&fallback, &["hello"]), Some(105));
-        assert_eq!(score_doc(&fallback, &["hello", "world"]), Some(210));
+        assert_eq!(
+            score_doc(&fallback, &["hello"]).map(|(score, _)| score),
+            Some(105)
+        );
+        assert_eq!(
+            score_doc(&fallback, &["hello", "world"]).map(|(score, _)| score),
+            Some(210)
+        );
 
         let butter = doc("butter.md", "Butter", "Butter\nunsalted butter");
         assert_eq!(score_doc(&butter, &["butter", "pancakes"]), None);
@@ -1342,5 +1450,98 @@ mod tests {
             paths(&rank(&[tagged_x, tagged_y], Some(&parsed("hello tag:x")))),
             ["a.md"]
         );
+    }
+
+    // --- rank_with_matches: matched title offsets ---
+
+    #[test]
+    fn rank_with_matches_indexes_title_for_fuzzy_match() {
+        let docs = [
+            doc("ship.md", "Ship mdfu MVP", "Ship mdfu MVP\nbody one"),
+            doc(
+                "other.md",
+                "Unrelated gardening",
+                "Unrelated gardening\nbody two",
+            ),
+        ];
+        let ranked = rank_with_matches(&docs, Some(&parsed("mdu")));
+        assert_eq!(ranked.len(), 1, "only the fuzzy title match survives");
+        assert_eq!(ranked[0].doc.path, "ship.md");
+        assert_eq!(ranked[0].matched_indexes, vec![5, 6, 8]);
+        let spelled: Vec<char> = ranked[0]
+            .matched_indexes
+            .iter()
+            .map(|&offset| docs[0].title[offset..].chars().next().unwrap())
+            .collect();
+        assert_eq!(spelled, ['m', 'd', 'u']);
+    }
+
+    #[test]
+    fn rank_with_matches_indexes_title_for_literal_substring() {
+        let docs = [doc("butter.md", "Butter chicken", "Butter chicken\nrecipe")];
+        let ranked = rank_with_matches(&docs, Some(&parsed("butter")));
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].matched_indexes, vec![0, 1, 2, 3, 4, 5]);
+
+        // A body-only match keeps the document but contributes no title offsets.
+        let body = [doc("body.md", "Unrelated", "Unrelated\nfresh butter here")];
+        let ranked = rank_with_matches(&body, Some(&parsed("butter")));
+        assert_eq!(ranked.len(), 1);
+        assert!(ranked[0].matched_indexes.is_empty());
+    }
+
+    #[test]
+    fn rank_with_matches_empty_query_and_non_match_have_no_positions() {
+        let docs = [
+            doc("a.md", "Alpha", "alpha body"),
+            doc("b.md", "Beta", "beta body"),
+        ];
+        let empty = rank_with_matches(&docs, Some(&parsed("")));
+        let empty_paths: Vec<&Document> = empty.iter().map(|ranked| ranked.doc).collect();
+        assert_eq!(paths(&empty_paths), ["a.md", "b.md"]);
+        assert!(empty.iter().all(|ranked| ranked.matched_indexes.is_empty()));
+
+        let no_query = rank_with_matches(&docs, None);
+        assert!(no_query
+            .iter()
+            .all(|ranked| ranked.matched_indexes.is_empty()));
+
+        let miss = rank_with_matches(&docs, Some(&parsed("zzzznope")));
+        assert!(miss.is_empty());
+    }
+
+    #[test]
+    fn rank_with_matches_preserves_rank_order_and_scores() {
+        let butter = Document {
+            updated_at: Some("2024-01-01T00:00:00Z".to_owned()),
+            ..doc("butter.md", "Butter", "Butter\nunsalted butter")
+        };
+        let milk = Document {
+            updated_at: Some("2024-06-01T00:00:00Z".to_owned()),
+            ..doc("buttermilk.md", "Buttermilk", "Buttermilk\npancakes")
+        };
+        let nut = Document {
+            updated_at: Some("2024-06-01T00:00:00Z".to_owned()),
+            ..doc("butternut.md", "Butternut squash", "Butternut squash\nsoup")
+        };
+        let docs = [milk, nut, butter];
+        let ranked = rank_with_matches(&docs, Some(&parsed("butter")));
+        let ranked_paths: Vec<&str> = ranked
+            .iter()
+            .map(|ranked| ranked.doc.path.as_str())
+            .collect();
+        assert_eq!(ranked_paths, paths(&rank(&docs, Some(&parsed("butter")))));
+
+        // Scores carried by the ranking match the frozen Go reference and stay
+        // in descending order.
+        let scores: Vec<i32> = ranked
+            .iter()
+            .map(|ranked| {
+                score_doc(ranked.doc, &["butter"])
+                    .map(|(score, _)| score)
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(scores, vec![206, 56, 56]);
     }
 }

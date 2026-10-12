@@ -234,3 +234,46 @@ are byte-identical including the trailing newline.
 - CLI usage-error wording, help stream, and single-dash long flags (clap vs Go
   `flag`), recorded in task 28. The harness only covers the custom
   `--format` usage message, which is byte-identical.
+
+## Reconciled "produced but never read" surface (todo 6)
+
+The port landed a handful of `mdfu-core`/`mdfu-tui` fields and helpers whose Go
+consumers are TTY-only or glamour-only, or that exist only to reproduce a Go
+struct. Each is either wired to a Rust consumer or recorded here as a
+deliberate decision; none is silently dropped. The note-picker render seams
+wired elsewhere in this plan (`Theme::highlight_sgr`, `Theme::link_sgr`, todos
+2/3) and `search::filter_archived` (owned by another worker) are out of scope
+for this section.
+
+| Item | Decision | Rationale |
+| --- | --- | --- |
+| `theme::Theme::preview_header` (`theme.rs`) and the `preview_header_color` key | recorded (kept) | The Go baseline (`internal/theme/theme.go:288-291`) builds `PreviewHeader` from the key, but no renderer reads it — only `internal/theme/theme_test.go` does. Both implementations therefore accept the key and never paint it; the Rust port keeps the field and YAML key for config parity. |
+| `theme::Theme::markdown_style` + `MarkdownStyle` + `MarkdownStyle::as_str` (`theme.rs`) | recorded (kept) | Go picks a glamour renderer style (`glamour.WithStandardStyle` in `internal/tui/tui.go:1309`); the Rust preview body renders through `tui-markdown` with `NoColorStyleSheet` (structural modifiers only, no palette), so the selection has no Rust consumer. Exact TTY SGR is already relaxed ("SGR-exact output"); the enum is kept so the `markdown_style` key still parses to its Go values. |
+| `model::Document::{sources, generated, verified, parse_error}` and the `Source`/`Attestation` read side (`model.rs`) | recorded (kept) | Ported to satisfy the `model.Document` contract: `parse` writes them and serde emits the Go field names. No Rust consumer reads them — the frontmatter panel renders the raw map, no command surfaces provenance or a parse-error warning, and filter `--format json` serializes `output::Result`, not `Document`. Kept for model parity rather than deleted. |
+| `task::render::{TableData::color, TableCell::color, CellColor}` (`render.rs`) | recorded (kept) | The SPEC §G semantic color roles are computed to match the Go TTY table, but the Rust `render_table` consumer emits cell text only (zero ANSI when piped; exact TTY SGR is relaxed). The structured roles stay available for a future styled consumer. |
+| `task::cli::Env::now` (`cli.rs`) | recorded (kept) | Mirrors Go `Env.Now`; no command consumes it in either implementation (the router still injects `now_unix`). Kept for `Env` struct parity. |
+| `task::cli::Subcommand::order` (`cli.rs`) | recorded (kept) | The canonical 10..90 registry order. The `static` table is already stored in that order and `help_text()` is a frozen literal (D4), so `order` is descriptive metadata whose only reader is the `subcommands_are_the_nine_in_order` test. Kept for parity with Go's `init()` registration order. |
+| `mdfu_tui::core_version` (`mdfu-tui/src/lib.rs`) | dropped | A Rust-only re-export of `mdfu_core::version` with no consumer and no Go analog: the Go TUI never prints a version and `cmd/mdfu/main.go` owns `--version` (the Rust CLI does the same via its own `CARGO_PKG_VERSION`). Removed rather than kept as dead surface; `mdfu_core::version` remains the crate API. |
+
+## Render seams wired (tui-render-wiring)
+
+The port had landed the helpers for these Go behaviors without connecting
+them, so the running binary silently dropped them. Each is now wired and
+covered by Rust render tests (`ratatui::TestBackend` cell/style assertions);
+exact SGR/OSC 8 bytes stay relaxed per the table above, but the behaviors are
+normative:
+
+- Match emphasis: `search::rank_with_matches` surfaces fuzzy byte offsets
+  into the title; the note list styles matched runs with
+  `Theme::highlight_sgr` and the preview emphasizes terms the same way.
+- Preview hyperlinks: the body runs
+  `extract_and_hide` → markdown render → `highlight_with_theme` →
+  `patch_links` → `close_open_hyperlinks`; `--no-hyperlinks` renders the
+  `label url` fallback with no OSC 8.
+- List snippets: a result whose title did not match shows a match-windowed
+  body excerpt instead of its path.
+- Task TUI: `tab` visibly moves pane focus and the `m` move prompt renders
+  its destination input.
+- A `guards.rs` test fails the build if a `Config` field, task `KeyMap`
+  binding, or `Theme` field loses its non-test reader, so this class of
+  ported-but-unwired drift cannot recur silently.

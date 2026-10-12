@@ -21,7 +21,7 @@ use mdfu_core::query;
 use mdfu_core::scan;
 use mdfu_core::search;
 use mdfu_core::theme::Theme;
-use mdfu_tui::notes::{self, Cmd, FilterFn, Msg};
+use mdfu_tui::notes::{self, Cmd, FilterFn, FilterHit, Msg};
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 use ratatui::DefaultTerminal;
 
@@ -179,27 +179,40 @@ pub fn run_filter(
 /// slice, so a re-parsed document after `$EDITOR` is visible to the next call.
 #[must_use]
 pub fn build_filter_fn() -> FilterFn {
-    Box::new(|query_str: &str, items: &[Document]| -> Vec<usize> {
-        if query_str.trim().is_empty() {
-            return (0..items.len()).collect();
-        }
-        let Ok(parsed) = query::parse(query_str) else {
-            return (0..items.len()).collect();
-        };
-        let ranked = search::rank(items, Some(&parsed));
-        // Go keys its items by *Document pointer; the picker's items are
-        // inline values with stable addresses, so a pointer map is the exact
-        // equivalent.
-        let by_ptr: HashMap<*const Document, usize> = items
-            .iter()
-            .enumerate()
-            .map(|(index, doc)| (std::ptr::from_ref(doc), index))
-            .collect();
-        ranked
-            .iter()
-            .filter_map(|doc| by_ptr.get(&std::ptr::from_ref(*doc)).copied())
-            .collect()
-    })
+    let hits = |index: usize| FilterHit {
+        index,
+        matched_indexes: Vec::new(),
+    };
+    Box::new(
+        move |query_str: &str, items: &[Document]| -> Vec<FilterHit> {
+            if query_str.trim().is_empty() {
+                return (0..items.len()).map(hits).collect();
+            }
+            let Ok(parsed) = query::parse(query_str) else {
+                return (0..items.len()).map(hits).collect();
+            };
+            let ranked = search::rank_with_matches(items, Some(&parsed));
+            // Go keys its items by *Document pointer; the picker's items are
+            // inline values with stable addresses, so a pointer map is the exact
+            // equivalent.
+            let by_ptr: HashMap<*const Document, usize> = items
+                .iter()
+                .enumerate()
+                .map(|(index, doc)| (std::ptr::from_ref(doc), index))
+                .collect();
+            ranked
+                .iter()
+                .filter_map(|hit| {
+                    by_ptr
+                        .get(&std::ptr::from_ref(hit.doc))
+                        .map(|&index| FilterHit {
+                            index,
+                            matched_indexes: hit.matched_indexes.clone(),
+                        })
+                })
+                .collect()
+        },
+    )
 }
 
 /// Interactive picker mode: loads documents, injects the live filter plus the
@@ -452,19 +465,23 @@ mod tests {
         assert!(err.starts_with("mdfu: "), "stderr: {err}");
     }
 
+    fn hit_indices(hits: Vec<FilterHit>) -> Vec<usize> {
+        hits.into_iter().map(|hit| hit.index).collect()
+    }
+
     #[test]
     fn pipeline_build_filter_fn_empty_query_returns_all_indices() {
         let items = vec![doc("a.md", "alpha"), doc("b.md", "beta")];
         let filter = build_filter_fn();
-        assert_eq!(filter("", &items), vec![0, 1]);
-        assert_eq!(filter("   ", &items), vec![0, 1]);
+        assert_eq!(hit_indices(filter("", &items)), vec![0, 1]);
+        assert_eq!(hit_indices(filter("   ", &items)), vec![0, 1]);
     }
 
     #[test]
     fn pipeline_build_filter_fn_parse_error_returns_all_indices() {
         let items = vec![doc("a.md", "alpha"), doc("b.md", "beta")];
         let filter = build_filter_fn();
-        assert_eq!(filter("created:notadate", &items), vec![0, 1]);
+        assert_eq!(hit_indices(filter("created:notadate", &items)), vec![0, 1]);
     }
 
     #[test]
@@ -474,8 +491,21 @@ mod tests {
             doc("b.md", "# Beta\n\nonly beta here\n"),
         ];
         let filter = build_filter_fn();
-        assert_eq!(filter("kumquat", &items), vec![0]);
-        assert_eq!(filter("beta", &items), vec![1]);
-        assert_eq!(filter("kumquat beta", &items), Vec::<usize>::new());
+        let kumquat = filter("kumquat", &items);
+        assert_eq!(hit_indices(kumquat.clone()), vec![0]);
+        assert!(
+            kumquat[0].matched_indexes.is_empty(),
+            "body-only match carries no title positions"
+        );
+        let beta = filter("beta", &items);
+        assert_eq!(hit_indices(beta.clone()), vec![1]);
+        assert!(
+            !beta[0].matched_indexes.is_empty(),
+            "title match carries title positions"
+        );
+        assert_eq!(
+            hit_indices(filter("kumquat beta", &items)),
+            Vec::<usize>::new()
+        );
     }
 }

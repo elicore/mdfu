@@ -5,7 +5,7 @@
 //! order, and the remaining fields track mode, navigation, toggles, and the
 //! transient status message.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use mdfu_core::model::Document;
 use mdfu_core::theme::Theme;
@@ -16,20 +16,34 @@ use crate::preview::{self, PreviewState};
 use crate::view_model::PreviewBlock;
 use crate::widgets::SearchInput;
 
-/// Injected query filter: maps the current query plus the full item snapshot
-/// to the **indices** of the documents to display, in display order.
+/// One filter hit: the item index plus the query's matched byte offsets into
+/// that item's title, in ascending order (empty when the filter matched
+/// elsewhere, or when the filter does not compute positions, like
+/// [`default_filter`]).
 ///
 /// Indices are the picker's stable identity: they survive re-filtering, key
 /// multi-selection, and map straight back to the source [`Document`] for the
 /// preview and editor flows. Go passes `Item` values around and keys them by
 /// `path:` strings; the index form is the Rust equivalent that avoids a second
-/// identity table.
+/// identity table. The positions feed the list's match emphasis
+/// (`search::rank_with_matches` computes them; the theme's `highlight_sgr`
+/// styles them at render time).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterHit {
+    /// Index into the item slice passed to the filter.
+    pub index: usize,
+    /// Ascending byte offsets of the matched characters in the item's title.
+    pub matched_indexes: Vec<usize>,
+}
+
+/// Injected query filter: maps the current query plus the full item snapshot
+/// to the **hits** of the documents to display, in display order.
 ///
 /// The filter receives the App's *current* items (not a captured copy), so a
 /// re-parse that replaces a document is visible to the next filter call. An
 /// empty query must return every index. The constructor is the only way to
 /// install a filter: there is no global/static fallback.
-pub type FilterFn = Box<dyn Fn(&str, &[Document]) -> Vec<usize>>;
+pub type FilterFn = Box<dyn Fn(&str, &[Document]) -> Vec<FilterHit>>;
 
 /// Injected re-parse hook used after an external editor exits (Go
 /// `ReloadFunc`). The picker never imports `mdfu_core::parse`; the CLI wires
@@ -126,6 +140,9 @@ fn classify(event: &KeyEvent) -> Key {
 pub struct App {
     pub(crate) items: Vec<Document>,
     pub(crate) filtered: Vec<usize>,
+    /// Match positions per visible item index, rebuilt with `filtered` on
+    /// every [`App::refilter`]; drives the list's match emphasis.
+    pub(crate) matched: HashMap<usize, Vec<usize>>,
     pub(crate) filter: FilterFn,
     pub(crate) input: SearchInput,
     pub(crate) cursor: usize,
@@ -168,6 +185,7 @@ impl App {
         let mut app = Self {
             items,
             filtered: Vec::new(),
+            matched: HashMap::new(),
             filter,
             input,
             cursor: 0,
@@ -393,15 +411,19 @@ impl App {
         let previous = self.filtered.get(self.cursor).copied();
         let query = self.input.value().to_owned();
         self.terms = links::query_terms(&query);
-        let mut base: Vec<usize> = (self.filter)(&query, &self.items);
-        base.retain(|index| *index < self.items.len());
+        let mut hits: Vec<FilterHit> = (self.filter)(&query, &self.items);
+        hits.retain(|hit| hit.index < self.items.len());
         if !self.show_archived {
-            base.retain(|index| !self.items[*index].is_archived());
+            hits.retain(|hit| !self.items[hit.index].is_archived());
         }
-        if self.limit > 0 && base.len() > self.limit {
-            base.truncate(self.limit);
+        if self.limit > 0 && hits.len() > self.limit {
+            hits.truncate(self.limit);
         }
-        self.filtered = base;
+        self.matched = hits
+            .iter()
+            .map(|hit| (hit.index, hit.matched_indexes.clone()))
+            .collect();
+        self.filtered = hits.into_iter().map(|hit| hit.index).collect();
         if let Some(previous) = previous {
             if let Some(position) = self.filtered.iter().position(|index| *index == previous) {
                 self.cursor = position;
@@ -709,12 +731,17 @@ impl App {
 /// document's searchable blob; an empty query keeps every item.
 ///
 /// Scores are irrelevant here — order is original order, exactly like Go's
-/// fallback.
+/// fallback. Positions are always empty: this filter only knows a document
+/// matched, not where.
 #[must_use]
-pub fn default_filter(query: &str, items: &[Document]) -> Vec<usize> {
+pub fn default_filter(query: &str, items: &[Document]) -> Vec<FilterHit> {
+    let hits = |index: usize| FilterHit {
+        index,
+        matched_indexes: Vec::new(),
+    };
     let trimmed = query.trim();
     if trimmed.is_empty() {
-        return (0..items.len()).collect();
+        return (0..items.len()).map(hits).collect();
     }
     let tokens: Vec<String> = trimmed.split_whitespace().map(str::to_lowercase).collect();
     items
@@ -724,7 +751,7 @@ pub fn default_filter(query: &str, items: &[Document]) -> Vec<usize> {
             let blob = item_blob(doc);
             tokens.iter().all(|token| blob.contains(token.as_str()))
         })
-        .map(|(index, _)| index)
+        .map(|(index, _)| hits(index))
         .collect()
 }
 
@@ -786,17 +813,22 @@ mod tests {
     }
 
     /// Injected stub mirroring Go's `substringStub`: case-insensitive
-    /// substring match on the title.
-    fn substring_filter(query: &str, items: &[Document]) -> Vec<usize> {
+    /// substring match on the title. Positions stay empty on purpose so tests
+    /// can tell filter-provided positions apart from absent ones.
+    fn substring_filter(query: &str, items: &[Document]) -> Vec<FilterHit> {
+        let hits = |index: usize| FilterHit {
+            index,
+            matched_indexes: Vec::new(),
+        };
         let needle = query.trim().to_lowercase();
         if needle.is_empty() {
-            return (0..items.len()).collect();
+            return (0..items.len()).map(hits).collect();
         }
         items
             .iter()
             .enumerate()
             .filter(|(_, doc)| doc.title.to_lowercase().contains(&needle))
-            .map(|(index, _)| index)
+            .map(|(index, _)| hits(index))
             .collect()
     }
 
@@ -1115,17 +1147,21 @@ mod tests {
         tagged.tags = vec!["launch".to_owned()];
         let items = vec![blob_doc, tagged, doc("c.md", "third")];
 
-        assert_eq!(default_filter("deepterm", &items), vec![0]);
-        assert_eq!(default_filter("launch", &items), vec![1]);
+        let hit = |index: usize| FilterHit {
+            index,
+            matched_indexes: Vec::new(),
+        };
+        assert_eq!(default_filter("deepterm", &items), vec![hit(0)]);
+        assert_eq!(default_filter("launch", &items), vec![hit(1)]);
         assert_eq!(
             default_filter("DEEPTERM LAUNCH", &items),
-            Vec::<usize>::new()
+            Vec::<FilterHit>::new()
         );
         assert_eq!(
             default_filter("unrelated launch", &items),
-            Vec::<usize>::new()
+            Vec::<FilterHit>::new()
         );
-        assert_eq!(default_filter("  ", &items), vec![0, 1, 2]);
+        assert_eq!(default_filter("  ", &items), vec![hit(0), hit(1), hit(2)]);
     }
 
     #[test]
@@ -1175,7 +1211,11 @@ mod tests {
 
     #[test]
     fn note_out_of_range_filter_indices_are_dropped() {
-        let filter: FilterFn = Box::new(|_, _| vec![0, 99, 1]);
+        let hit = |index: usize| FilterHit {
+            index,
+            matched_indexes: Vec::new(),
+        };
+        let filter: FilterFn = Box::new(move |_, _| vec![hit(0), hit(99), hit(1)]);
         let mut app = App::new(
             vec![doc("a.md", "alpha"), doc("b.md", "beta")],
             Config::default(),

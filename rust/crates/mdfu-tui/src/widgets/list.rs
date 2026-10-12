@@ -1,11 +1,15 @@
 //! Note-picker result list over [`NoteRow`] view-models.
 
+use std::collections::BTreeSet;
+
 use mdfu_core::theme::Theme;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 
+use super::preview::apply_sgr;
 use super::style_from;
 use crate::view_model::NoteRow;
 
@@ -18,6 +22,44 @@ pub struct NoteList<'a> {
     offset: usize,
     selected: &'a [usize],
     theme: Theme,
+}
+
+/// Splits `title` into raw/emphasized spans at `positions` (ascending byte
+/// offsets of the matched characters, as produced by
+/// `search::rank_with_matches`). Out-of-range and mid-character offsets are
+/// ignored; an empty set yields one raw span, identical to no highlighting.
+fn title_spans(title: &str, positions: &[usize], highlight: Style) -> Vec<Span<'static>> {
+    let hits: BTreeSet<usize> = positions
+        .iter()
+        .copied()
+        .filter(|offset| *offset < title.len() && title.is_char_boundary(*offset))
+        .collect();
+    if hits.is_empty() {
+        return vec![Span::raw(title.to_owned())];
+    }
+    let mut spans = Vec::new();
+    let mut raw = String::new();
+    let mut lit = String::new();
+    for (byte, ch) in title.char_indices() {
+        if hits.contains(&byte) {
+            if !raw.is_empty() {
+                spans.push(Span::raw(std::mem::take(&mut raw)));
+            }
+            lit.push(ch);
+        } else {
+            if !lit.is_empty() {
+                spans.push(Span::styled(std::mem::take(&mut lit), highlight));
+            }
+            raw.push(ch);
+        }
+    }
+    if !raw.is_empty() {
+        spans.push(Span::raw(raw));
+    }
+    if !lit.is_empty() {
+        spans.push(Span::styled(lit, highlight));
+    }
+    spans
 }
 
 impl<'a> NoteList<'a> {
@@ -78,7 +120,13 @@ impl<'a> NoteList<'a> {
             spans.push(Span::raw(" "));
         }
         let title = row.display_title();
-        spans.push(Span::raw(title.to_owned()));
+        if row.title.is_empty() || row.matched_indexes.is_empty() {
+            spans.push(Span::raw(title.to_owned()));
+        } else {
+            let mut highlight = Style::default();
+            apply_sgr(&mut highlight, &self.theme.highlight_sgr);
+            spans.extend(title_spans(&row.title, &row.matched_indexes, highlight));
+        }
         let mut extra = String::new();
         if !row.doc_type.is_empty() {
             extra.push_str(" [");
@@ -148,7 +196,7 @@ impl Widget for &NoteList<'_> {
 mod tests {
     use super::*;
     use crate::widgets::test_support::{buffer_lines, render, render_buffer};
-    use ratatui::style::Color;
+    use ratatui::style::{Color, Modifier};
 
     fn row(title: &str, path: &str, doc_type: &str, archived: bool) -> NoteRow {
         NoteRow {
@@ -156,6 +204,7 @@ mod tests {
             path: path.to_owned(),
             doc_type: doc_type.to_owned(),
             snippet: String::new(),
+            matched_indexes: Vec::new(),
             archived,
         }
     }
@@ -245,6 +294,60 @@ mod tests {
         let list = NoteList::new(&rows, &Theme::default());
         assert_eq!(render(&list, 40, 1), ["> T  …match…"]);
         assert!(buffer_lines(&render_buffer(&list, 40, 1))[0].contains("…match…"));
+    }
+
+    #[test]
+    fn widgets_note_list_emphasizes_matched_title_characters() {
+        let rows = vec![
+            NoteRow::from(&mdfu_core::model::Document {
+                title: "Butter chicken".to_owned(),
+                path: "a.md".to_owned(),
+                ..mdfu_core::model::Document::default()
+            })
+            .with_positions(vec![0, 1, 2, 3, 4, 5]),
+            row("Second", "b.md", "", false),
+        ];
+        let list = NoteList::new(&rows, &Theme::default()).cursor(1);
+        assert_eq!(
+            render(&list, 40, 2),
+            ["  Butter chicken  a.md", "> Second  b.md"]
+        );
+        let buffer = render_buffer(&list, 40, 2);
+        for (x, glyph) in [(2, "B"), (3, "u"), (4, "t"), (5, "t"), (6, "e"), (7, "r")] {
+            let cell = buffer.cell((x, 0)).expect("matched cell");
+            assert_eq!(cell.symbol(), glyph, "matched rune at x={x}");
+            assert_eq!(cell.bg, Color::LightYellow, "highlight bg at x={x}");
+            assert_eq!(cell.fg, Color::Black, "highlight fg at x={x}");
+            assert!(
+                cell.modifier.contains(Modifier::BOLD),
+                "highlight bold at x={x}"
+            );
+        }
+        let plain = buffer.cell((9, 0)).expect("unmatched cell");
+        assert_eq!(plain.symbol(), "c");
+        assert_eq!(plain.bg, Color::Reset);
+    }
+
+    #[test]
+    fn widgets_note_list_ignores_invalid_match_offsets() {
+        let rows = vec![NoteRow::from(&mdfu_core::model::Document {
+            title: "日本語".to_owned(),
+            path: "a.md".to_owned(),
+            ..mdfu_core::model::Document::default()
+        })
+        .with_positions(vec![999, 4, 3])];
+        let list = NoteList::new(&rows, &Theme::default());
+        let lines = render(&list, 40, 1);
+        assert!(
+            lines[0].replace(' ', "").contains("日本語"),
+            "wide title renders despite junk offsets: {lines:?}"
+        );
+        assert!(lines[0].contains("a.md"), "path renders: {lines:?}");
+        let buffer = render_buffer(&list, 40, 1);
+        let hit = buffer.cell((4, 0)).expect("cell of 本");
+        assert_eq!(hit.bg, Color::LightYellow, "valid offset 3 styles 本");
+        let mid = buffer.cell((2, 0)).expect("cell of 日");
+        assert_eq!(mid.bg, Color::Reset, "mid-char offset 4 is ignored");
     }
 
     #[test]

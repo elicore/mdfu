@@ -16,9 +16,3 @@ pub mod preview;
 pub mod tasks;
 pub mod view_model;
 pub mod widgets;
-
-/// The version of `mdfu-core` this UI is built against.
-#[must_use]
-pub fn core_version() -> &'static str {
-    mdfu_core::version()
-}

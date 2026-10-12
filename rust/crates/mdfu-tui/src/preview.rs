@@ -178,6 +178,9 @@ pub fn body_window(body: &str, terms: &[String], body_lines: u16) -> String {
 /// Renders one document preview into `area` through the widget [`Preview`]
 /// stack, without retaining a cache (Go `PreviewText*`). Long-lived pickers
 /// should keep a [`PreviewState`] instead so repeated frames reuse body windows.
+///
+/// `hyperlinks` is the picker's `--no-hyperlinks` inverse: `false` renders the
+/// `label (url)` fallback instead of OSC 8 hyperlinks.
 pub fn render_preview(
     area: Rect,
     buf: &mut Buffer,
@@ -185,9 +188,10 @@ pub fn render_preview(
     theme: &Theme,
     terms: &[String],
     show_frontmatter: bool,
+    hyperlinks: bool,
 ) {
     let mut state = PreviewState::new(true, show_frontmatter);
-    state.render(area, buf, doc, theme, terms);
+    state.render(area, buf, doc, theme, terms, hyperlinks);
 }
 
 /// Identity of a cached body window: the document path (the picker's stable
@@ -299,7 +303,10 @@ impl PreviewState {
     ///
     /// Draws nothing when the `ctrl+p` toggle is off; draws the dim
     /// `(no preview)` placeholder when no document is selected (Go
-    /// `renderPreviewPane`).
+    /// `renderPreviewPane`). `hyperlinks` (`--no-hyperlinks` inverted) and
+    /// `terms` ride the windowed block into the body renderer; the cache key
+    /// already covers `terms`, and `hyperlinks` only flips link emission at
+    /// render time, so neither is cached.
     pub fn render(
         &mut self,
         area: Rect,
@@ -307,6 +314,7 @@ impl PreviewState {
         doc: Option<&Document>,
         theme: &Theme,
         terms: &[String],
+        hyperlinks: bool,
     ) {
         if !self.show_preview || area.width == 0 || area.height == 0 {
             return;
@@ -315,7 +323,9 @@ impl PreviewState {
             render_placeholder(area, buf, theme);
             return;
         };
-        let block = self.windowed_block(doc, area.width, terms, theme);
+        let mut block = self.windowed_block(doc, area.width, terms, theme);
+        block.hyperlinks = hyperlinks;
+        block.terms = terms.to_vec();
         let mut preview = Preview::new(&block, theme);
         preview.set_visible(COMPONENT_FRONTMATTER, self.show_frontmatter);
         preview.render(area, buf);
@@ -482,9 +492,21 @@ mod tests {
         width: u16,
         height: u16,
     ) -> Vec<String> {
+        render_lines_with(state, doc, theme, terms, true, width, height)
+    }
+
+    fn render_lines_with(
+        state: &mut PreviewState,
+        doc: Option<&Document>,
+        theme: &Theme,
+        terms: &[String],
+        hyperlinks: bool,
+        width: u16,
+        height: u16,
+    ) -> Vec<String> {
         let area = Rect::new(0, 0, width, height);
         let mut buffer = Buffer::empty(area);
-        state.render(area, &mut buffer, doc, theme, terms);
+        state.render(area, &mut buffer, doc, theme, terms, hyperlinks);
         buffer_lines(&buffer)
     }
 
@@ -714,6 +736,7 @@ mod tests {
                 Some(&doc),
                 &theme,
                 &[],
+                true,
             );
         }
         assert_eq!(state.cache_len(), 3, "frames reuse the cached windows");
@@ -817,12 +840,51 @@ mod tests {
         let theme = Theme::default();
         let area = Rect::new(0, 0, 80, 12);
         let mut direct = Buffer::empty(area);
-        render_preview(area, &mut direct, Some(&doc), &theme, &[], true);
+        render_preview(area, &mut direct, Some(&doc), &theme, &[], true, true);
 
         let mut state = PreviewState::new(true, true);
         let mut via_state = Buffer::empty(area);
-        state.render(area, &mut via_state, Some(&doc), &theme, &[]);
+        state.render(area, &mut via_state, Some(&doc), &theme, &[], true);
 
         assert_eq!(buffer_lines(&direct), buffer_lines(&via_state));
+    }
+
+    #[test]
+    fn preview_body_threading_emits_osc8_fallback_and_term_emphasis() {
+        let doc = parse_content(
+            "testdata/link-note.md",
+            "See [Charm](https://charm.sh) for the parser track.\n",
+        );
+        let theme = Theme::default();
+        let mut state = PreviewState::default();
+
+        let on = render_lines_with(&mut state, Some(&doc), &theme, &[], true, 80, 10).join("\n");
+        assert!(
+            on.contains("\x1b]8;;https://charm.sh\x07"),
+            "hyperlinks on emits the OSC 8 opener:\n{on:?}"
+        );
+        assert!(!on.contains("(https://charm.sh)"), "URL is hidden:\n{on:?}");
+
+        let off = render_lines_with(&mut state, Some(&doc), &theme, &[], false, 80, 10).join("\n");
+        assert!(
+            off.contains("Charm (https://charm.sh)"),
+            "hyperlinks off renders the label url fallback:\n{off:?}"
+        );
+        assert!(!off.contains("\x1b]8;"), "no OSC 8 when off:\n{off:?}");
+
+        let terms = ["parser".to_owned()];
+        let area = Rect::new(0, 0, 80, 10);
+        let mut buffer = Buffer::empty(area);
+        state.render(area, &mut buffer, Some(&doc), &theme, &terms, true);
+        let mut emphasized = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let cell = buffer.cell((x, y)).expect("cell in bounds");
+                if cell.bg == ratatui::style::Color::LightYellow {
+                    emphasized.push_str(cell.symbol());
+                }
+            }
+        }
+        assert_eq!(emphasized, "parser", "theme highlight_sgr on the term");
     }
 }

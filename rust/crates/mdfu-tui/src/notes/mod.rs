@@ -28,6 +28,6 @@ mod app;
 mod editor;
 mod view;
 
-pub use app::{default_filter, editor_argv, App, Cmd, Config, FilterFn, Msg, ReloadFn};
+pub use app::{default_filter, editor_argv, App, Cmd, Config, FilterFn, FilterHit, Msg, ReloadFn};
 pub use editor::exec_editor;
 pub use view::{SEARCH_PLACEHOLDER, SEARCH_PROMPT};
