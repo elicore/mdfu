@@ -576,7 +576,7 @@ mod tests {
     use super::*;
     use crate::task::{body, grammar};
 
-    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata/tasks");
+    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/tasks");
 
     const WANT_LINES: &str = "[ ] EXMPL-001  Fix the thing  #launch  !high  @status:doing\n\
                               [x] EXMPL-002  Ship it  #launch\n";

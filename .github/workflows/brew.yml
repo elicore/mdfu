@@ -9,7 +9,12 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/release-check.yml"
       - "LICENSE"
-      - "rust/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "rust-toolchain.toml"
+      - "rustfmt.toml"
+      - "PARITY.md"
   release:
     types: [published]
   workflow_dispatch:

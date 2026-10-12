@@ -2,7 +2,7 @@
 
 ## OVERVIEW
 
-Separate npm package (Node 22, `"type": "module"`) publishing https://elicore.github.io/mdfu — NOT part of the Go module. `docs/` at repo root is just a redirect stub.
+Separate npm package (Node 22, `"type": "module"`) publishing https://elicore.github.io/mdfu — NOT part of the Cargo workspace. `docs/` at repo root is just a redirect stub.
 
 ## WHERE TO LOOK
 
@@ -23,4 +23,4 @@ Separate npm package (Node 22, `"type": "module"`) publishing https://elicore.gi
 
 - Don't put user-facing docs in root `docs/` — it's a deliberate redirect (single source of truth).
 - Don't edit `dist/` or commit it — gitignored via `website/.gitignore`.
-- Don't add a second `go.mod` here (module-guard allows exactly one, at root).
+- Don't add a `Cargo.toml` here (module-guard allows exactly one workspace root, at the repository root).

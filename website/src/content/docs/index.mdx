@@ -18,13 +18,13 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 ## What is mdfu?
 
-**mdfu** is a fast, single static Go binary for fuzzy-finding Markdown notes — by body free text, frontmatter values as free text, and attribute qualifiers. It understands OKF v0.1/v0.2 and Portent/Tolaria frontmatter through one unified normalized model.
+**mdfu** is a fast, single static Rust binary for fuzzy-finding Markdown notes — by body free text, frontmatter values as free text, and attribute qualifiers. It understands OKF v0.1/v0.2 and Portent/Tolaria frontmatter through one unified normalized model.
 
 **Why mdfu?**
 
 - One box: bare words fuzzy-match, `key:value` hard-filters, AND-combined.
 - Two modes: interactive TUI picker by default, pipeable filter mode (`mdfu <query>`, fzf-compatible).
-- No daemon, no persistent index, no `cgo` by default.
+- No daemon, no persistent index — one statically linked binary.
 
 ```
 scan → parse → query → search → output/tui
@@ -32,12 +32,16 @@ scan → parse → query → search → output/tui
 
 ## Quickstart
 
-Requires Go 1.25+.
+Requires Rust 1.98.1+ to build from source. Prebuilt binaries are available
+via Homebrew.
 
 ```sh
-go install github.com/elicore/mdfu/cmd/mdfu@latest
-# or
-git clone https://github.com/elicore/mdfu && cd mdfu && go build -o mdfu ./cmd/mdfu
+# Homebrew (prebuilt bottle)
+brew tap elicore/mdfu
+brew install --cask elicore/mdfu/mdfu
+
+# or from source (binary lands in target/release/mdfu)
+git clone https://github.com/elicore/mdfu && cd mdfu && cargo build --release
 ```
 
 Run it inside your notes folder — the root defaults to `.`:

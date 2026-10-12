@@ -1,7 +1,7 @@
 //! Interactive tasks runner: the TTY `mdfu tasks` entry point.
 //!
 //! Port of `runTasksTUI` from `cmd/mdfu/task.go` of the frozen Go baseline
-//! (`rust/PARITY.md` records the SHA): resolve the same `--path`/`--all`/
+//! (`PARITY.md` records the SHA): resolve the same `--path`/`--all`/
 //! `--blocked`/`--sort`/`--tag`/`--priority` surface as `task list`, load the
 //! **broadened** checkbox scope (any bullet, indent, `[X]`, seeds, and
 //! unidentified lines), select the rows, resolve the theme, and hand the

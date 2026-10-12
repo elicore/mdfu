@@ -935,7 +935,7 @@ fn merge_source(
 mod tests {
     use super::*;
 
-    const FIXTURE_DIR: &str = "../../../testdata";
+    const FIXTURE_DIR: &str = "../../testdata";
 
     fn parse_fixture(name: &str) -> Document {
         let path = format!("{FIXTURE_DIR}/{name}");

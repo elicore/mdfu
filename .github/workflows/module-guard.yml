@@ -17,29 +17,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Assert one Cargo workspace (rust/) with exactly 3 locked member crates
+      - name: Assert one Cargo workspace (repo root) with exactly 3 locked member crates
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
 
-          if [ ! -f rust/Cargo.toml ]; then
-            fail "rust/Cargo.toml missing — the single Cargo workspace root must exist"
+          if [ ! -f Cargo.toml ]; then
+            fail "Cargo.toml missing — the single Cargo workspace root must exist"
           fi
 
-          manifests=$(find . -path ./.git -prune -o -path ./website -prune -o -name 'Cargo.toml' -print | sed 's|^\./||' | sort)
-          expected="rust/Cargo.toml
-          rust/crates/mdfu-cli/Cargo.toml
-          rust/crates/mdfu-core/Cargo.toml
-          rust/crates/mdfu-tui/Cargo.toml"
+          manifests=$(find . -path ./.git -prune -o -path ./target -prune -o -path ./website -prune -o -name 'Cargo.toml' -print | sed 's|^\./||' | sort)
+          expected="Cargo.toml
+          crates/mdfu-cli/Cargo.toml
+          crates/mdfu-core/Cargo.toml
+          crates/mdfu-tui/Cargo.toml"
           echo "Cargo.toml files outside website/:"
           echo "$manifests"
           if [ "$manifests" != "$expected" ]; then
-            fail "expected only rust/Cargo.toml plus crates/{mdfu-core,mdfu-tui,mdfu-cli}/Cargo.toml"
+            fail "expected only Cargo.toml plus crates/{mdfu-core,mdfu-tui,mdfu-cli}/Cargo.toml"
           fi
 
-          locks=$(find . -path ./.git -prune -o -path ./website -prune -o -name 'Cargo.lock' -print | sed 's|^\./||' | sort)
-          if [ "$locks" != "rust/Cargo.lock" ]; then
-            fail "expected exactly one Cargo.lock at rust/Cargo.lock, found: ${locks:-none}"
+          locks=$(find . -path ./.git -prune -o -path ./target -prune -o -path ./website -prune -o -name 'Cargo.lock' -print | sed 's|^\./||' | sort)
+          if [ "$locks" != "Cargo.lock" ]; then
+            fail "expected exactly one Cargo.lock at Cargo.lock, found: ${locks:-none}"
           fi
 
           roots=""
@@ -48,17 +48,17 @@ jobs:
               roots="$roots $manifest"
             fi
           done
-          if [ "$roots" != " rust/Cargo.toml" ]; then
-            fail "[workspace] must be declared only in rust/Cargo.toml (found:${roots:-none})"
+          if [ "$roots" != " Cargo.toml" ]; then
+            fail "[workspace] must be declared only in Cargo.toml (found:${roots:-none})"
           fi
 
-          member_count=$(sed -n '/^members *=/,/^\]/p' rust/Cargo.toml | grep -c '"crates/.*"' || true)
+          member_count=$(sed -n '/^members *=/,/^\]/p' Cargo.toml | grep -c '"crates/.*"' || true)
           if [ "$member_count" -ne 3 ]; then
-            fail "rust/Cargo.toml [workspace] members must list exactly 3 crates, found $member_count"
+            fail "Cargo.toml [workspace] members must list exactly 3 crates, found $member_count"
           fi
           for crate in mdfu-core mdfu-tui mdfu-cli; do
-            grep -q "\"crates/$crate\"" rust/Cargo.toml ||
-              fail "rust/Cargo.toml [workspace] members must list crates/$crate"
+            grep -q "\"crates/$crate\"" Cargo.toml ||
+              fail "Cargo.toml [workspace] members must list crates/$crate"
           done
 
-          echo "Single-workspace layout OK (rust/Cargo.toml + 3 member crates)"
+          echo "Single-workspace layout OK (Cargo.toml + 3 member crates)"

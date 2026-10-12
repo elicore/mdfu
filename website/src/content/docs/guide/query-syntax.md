@@ -3,11 +3,11 @@ title: Query Syntax
 description: Single-box query language — bare words match body/frontmatter (fuzzy title fallback), key:value hard-filters, AND-combined.
 ---
 
-Single-box input (`internal/query/query.go:Parse`). Bare words substring-match the body/frontmatter (with a fuzzy title fallback); `key:value` tokens hard-filter. Tokens combine with **AND**. Keys case-insensitive; values preserve case. Quote multi-word values: `title:"Monthly Active"`. `|` alternation is **not** supported in v1 (reserved, see the [Roadmap](/project/roadmap/)).
+Single-box input (`crates/mdfu-core/src/query.rs`: `query::parse`). Bare words substring-match the body/frontmatter (with a fuzzy title fallback); `key:value` tokens hard-filter. Tokens combine with **AND**. Keys case-insensitive; values preserve case. Quote multi-word values: `title:"Monthly Active"`. `|` alternation is **not** supported in v1 (reserved, see the [Roadmap](/project/roadmap/)).
 
 | Token | Meaning | Example |
 |---|---|---|
-| `word …` | Bare words, AND-combined. Case-insensitive substring match against `SearchBlob` (body + frontmatter), with a fuzzy fallback against the title only. | `kumquat zebra` |
+| `word …` | Bare words, AND-combined. Case-insensitive substring match against the search blob (body + frontmatter), with a fuzzy fallback against the title only. | `kumquat zebra` |
 | `tag:v` / `tags:a,b` | Include tag(s), case-insensitive. `tags:` splits on commas. | `tag:launch` |
 | `-v` / `!v` inside tag value | Negate a tag. Only tag values support negation. | `tag:-launch` |
 | `type:V` | Normalized `type`, case-insensitive exact. | `type:Task` |
@@ -15,7 +15,7 @@ Single-box input (`internal/query/query.go:Parse`). Bare words substring-match t
 | `path:sub` | Case-insensitive substring of file path. | `path:portent` |
 | `status:V` | Case-insensitive exact against lowercased `status`. `status:archived` also matches `archived:true`. | `status:Draft` |
 | `organized:V` | Boolean filter over normalized `organized` (`true`/`false`; unset = `false`). | `organized:true` |
-| `archived:V` | Boolean filter over `IsArchived()`. | `archived:true` |
+| `archived:V` | Boolean filter over `Document::is_archived()`. | `archived:true` |
 | `created:D`, `updated:D` | Date filter on `CreatedAt`/`UpdatedAt`. | `created:2024-05-01` |
 | `date:D` | Matches if **either** date satisfies `D`. | `date:2023-11-15` |
 | `before:D` / `after:D` | Exclusive upper/lower bound on **either** date. | `before:2024-01-01` |

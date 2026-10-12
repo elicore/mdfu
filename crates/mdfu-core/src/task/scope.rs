@@ -342,7 +342,7 @@ mod tests {
 
     use super::*;
 
-    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata/tasks");
+    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/tasks");
 
     fn no_env(_key: &str) -> Option<String> {
         None

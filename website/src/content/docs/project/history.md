@@ -18,6 +18,11 @@ Completed work, kept for reference. Do not add new tasks here — see the [Roadm
 
 Integration order was A+B → C → D+E → main, each green on `go build ./... && go test ./...`.
 
+These tracks are the Go era. The Go implementation was ported to Rust, then
+deleted once the parity gate passed; its source survives only in git history at
+the frozen baseline SHA recorded in `PARITY.md`. The current implementation is
+the Rust workspace at the repository root — see [Architecture](/reference/architecture/).
+
 ## Milestones (all done)
 
 - M1: build green; scan finds `*.md`; parse fixtures produce expected docs.

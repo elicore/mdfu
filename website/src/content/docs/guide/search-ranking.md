@@ -3,35 +3,35 @@ title: Search & Ranking
 description: Hard-filter matching, graded fuzzy scoring with title boosts, and the known bottleneck.
 ---
 
-Implementation: `internal/search/search.go`. Two phases: hard-filter, then fuzzy score.
+Implementation: `crates/mdfu-core/src/search.rs`. Two phases: hard-filter, then fuzzy score.
 
-## `MatchesDoc` — hard filters (bare words ignored)
+## `matches_doc` — hard filters (bare words ignored)
 
-- `Tags`: subset, case-insensitive. `NotTags`: exclusion.
-- `DocType`: exact, case-folded.
-- `Title` / generic `key:value`: `fuzzyContainsFold` = case-insensitive substring **or** `sahilm/fuzzy` hit.
-- `Status`: exact-fold, plus `status:archived` matches `IsArchived()`.
-- `Path`: substring-fold.
-- Dates: `Created`/`Updated` via `matchDate` (inclusive/exclusive `From`/`To`); `date`/`before`/`after` use either-semantics (`matchEither`). Nil timestamp never matches a present filter.
+- `tags`: subset, case-insensitive. `not_tags`: exclusion.
+- `doc_type`: exact, case-folded.
+- `title` / generic `key:value`: `fuzzy_contains_fold` = case-insensitive substring **or** a fuzzy hit.
+- `status`: exact-fold, plus `status:archived` matches `Document::is_archived()`.
+- `path`: substring-fold.
+- Dates: `created`/`updated` via the `DateFilter` (inclusive/exclusive `from`/`to`); `date`/`before`/`after` use either-field semantics. An absent timestamp never matches a present filter.
 
-## `Rank` — bare-word scoring
+## `rank` — bare-word scoring
 
-1. Filter via `MatchesDoc`.
-2. No bare words → sort by `Path`.
-3. Else `scoreDoc` per doc: every bare word must match — AND semantics, miss drops the doc. A word matches by case-insensitive substring of `SearchBlob` (fallback `Title+" "+Body`); only if that misses does it fall back to `sahilm/fuzzy` against the `Title`.
-4. Sort: score desc → most-recent `UpdatedAt` (nil = oldest) → `Path`.
+1. Filter via `matches_doc`.
+2. No bare words → sort by `path`.
+3. Else `score_doc` per doc: every bare word must match — AND semantics, a miss drops the doc. A word matches by case-insensitive substring of `search_blob` (fallback `title + " " + body`); only if that misses does it fall back to the fuzzy matcher against the `title`.
+4. Sort: score desc → most-recent `updated_at` (absent = oldest) → `path`.
 
 ### Score formula
 
-Per bare word, `scoreDoc` adds a base plus a **graded** title boost:
+Per bare word, `score_doc` adds a base plus a **graded** title boost:
 
 | Contribution | Constant | Value | When |
 | --- | --- | --- | --- |
 | Match length | — | `len(word)` | word is a substring of the blob (body/frontmatter) |
-| Fuzzy score | — | `fuzzy.Find` score | not in blob, but fuzzy-matches the title |
-| Exact title | `exactTitleBoost` | `+200` | title equals the word exactly |
-| Whole-word title | `titleBoost` | `+100` | word appears as a whole word in the title |
-| Partial title | `partialTitleBoost` | `+50` | word appears **inside** a longer title word |
+| Fuzzy score | — | `fuzzy::find` score | not in blob, but fuzzy-matches the title |
+| Exact title | `EXACT_TITLE_BOOST` | `+200` | title equals the word exactly |
+| Whole-word title | `TITLE_BOOST` | `+100` | word appears as a whole word in the title |
+| Partial title | `PARTIAL_TITLE_BOOST` | `+50` | word appears **inside** a longer title word |
 
 The three title boosts are mutually exclusive, so whole-word/word-boundary hits are preferred over longer words that merely contain the query. A search for `butter` therefore ranks `Butter` (200 + 6) above `Buttermilk` (50 + 6), which in turn edges out a body-only mention (6). Boundaries are UTF-8-aware and treat any non-letter/digit/`_` character (spaces, hyphens, punctuation) as a separator.
 
@@ -40,15 +40,15 @@ An earlier version added a flat `+100` for any title substring, so `buttermilk` 
 :::
 
 :::note[Why title-only fuzzy?]
-Running the subsequence fuzzy matcher over `SearchBlob` includes the whole body, so almost any short query matches hundreds of unrelated notes (e.g. `kumquat` matched 948 files in a real vault). Body/frontmatter matches therefore require a literal substring; fuzzy is reserved for the short, high-signal title.
+Running the subsequence fuzzy matcher over the whole search blob includes the entire body, so almost any short query matches hundreds of unrelated notes (e.g. `kumquat` matched 948 files in a real vault). Body/frontmatter matches therefore require a literal substring; fuzzy is reserved for the short, high-signal title.
 :::
 
-## `FilterArchived`
+## `filter_archived`
 
-`Rank` never hides; `FilterArchived(docs, include)` / TUI `ctrl+a` layer applies hiding. `archived:true` / `status:archived` still match hidden docs.
+`rank` never hides; `filter_archived(docs, include)` / TUI `ctrl+a` layer applies hiding. `archived: true` / `status: archived` still match hidden docs.
 
 :::caution[Known bottleneck]
-`scoreDoc` lowercases the whole `SearchBlob` per doc per keystroke and runs `fuzzy.Find` on misses. No pre-lowercasing, no token pre-split, filter maps rebuilt per doc. Fine at fixture scale; the \<50ms/keystroke budget at 5k files needs the [Roadmap](/project/roadmap/) optimization tasks (lowered-blob cache, facet bitmaps, fuzzy-core benchmark).
+`score_doc` lowercases the whole search blob per doc per keystroke and runs the fuzzy matcher on misses. No pre-lowercasing, no token pre-split, filter maps rebuilt per doc. Fine at fixture scale; the \<50ms/keystroke budget at 5k files needs the [Roadmap](/project/roadmap/) optimization tasks (lowered-blob cache, facet bitmaps, fuzzy-core benchmark).
 :::
 
 See also: [Query Syntax](/guide/query-syntax/) for token semantics, and [Backend Evaluation](/reference/backend-evaluation/) for the indexed-alternative decision.

@@ -13,10 +13,10 @@ mdfu [QUERY...] [--root DIR] [--hidden] [--no-ignore] [--limit N] [--archived]
 | `QUERY...` (positional) | — | Non-interactive filter query; any positional argument selects filter mode. Multiple words are joined with spaces. Omit for the TUI. Query language: [Query Syntax](/guide/query-syntax/). |
 | `--root DIR` | `.` | Root to scan for `*.md` (see [Scan](/guide/scan/)). |
 | `--hidden` | off | Include hidden files/dirs. |
-| `--no-ignore` | off | Intended to disable gitignore respect — currently no-op, see [Scan](/guide/scan/). |
+| `--no-ignore` | off | Include gitignored files. Gitignore respect is **on by default** (`.gitignore`/`.ignore`, parent directories included); see [Scan](/guide/scan/). |
 | `--limit N` | `20` filter / `50` TUI | Max results; `0`/negative = unlimited. Filter mode defaults to `20`, the interactive TUI to `50`. |
 | `--format F` | `paths` | `paths` (one path/line, fzf-compatible), `json` (`[{path,score,title,type,snippet}]` indented), `vimgrep` (`path:1:1:title`). Unknown → exit `2`. |
-| `--archived` | off | Include archived docs (else `FilterArchived` hides them; they stay searchable). |
+| `--archived` | off | Include archived docs (else `filter_archived` hides them; they stay searchable). |
 | `--no-hyperlinks` | off | TUI only: render markdown links as `label url` instead of OSC 8 terminal hyperlinks (use on terminals without hyperlink support). See [TUI](/guide/tui/#links). |
 | `--config PATH` | `$XDG_CONFIG_HOME/mdfu/config.yaml` | TUI only: theme/config file; overrides `$MDFU_CONFIG` and the discovered XDG file. Pass `default` to print the builtin default config to stdout and exit. See [Configuration](/guide/configuration/). |
 | `--version` | — | Print version (`-ldflags "-X main.version=…"`) and exit. |
@@ -27,34 +27,37 @@ Exit codes: `0` = ≥1 match, `1` = no match, `2` = usage error (e.g. bad `--for
 
 ## Rust port
 
-The Rust binary (`rust/crates/mdfu-cli`) tracks the Go CLI for behavioral
-parity, not byte-for-byte identical UI. The notes below call out the surface
-differences; `rust/PARITY.md` is the full contract.
+This page documents the Rust binary (`crates/mdfu-cli`). It was written to
+match the Go implementation it replaced, which was deleted after the parity gate
+and survives only in git history at the frozen baseline SHA recorded in
+`PARITY.md`. The notes below call out the differences that remain; `PARITY.md` is
+the full contract. Wherever the Go behavior is described, it is past tense — that
+binary is not distributed.
 
-- `--no-ignore`: Rust respects `.gitignore` and `.ignore` files (including
-  those in parent directories) by default, and `--no-ignore` disables that —
-  the port's one deliberate behavioral divergence. Go accepts
-  `RespectGitignore` but ignores it (`scan.go:31`), so the Go binary always
-  returns gitignored files. Run either binary with `--no-ignore` for
-  byte-identical discovery (see [Scan](/guide/scan/)).
+- `--no-ignore`: the Rust binary respects `.gitignore` and `.ignore` files
+  (including those in parent directories) by default, and `--no-ignore` disables
+  that — the one deliberate behavioral divergence. The Go baseline accepted
+  `RespectGitignore` but ignored it, so it always returned gitignored files.
+  Running either binary with `--no-ignore` yields byte-identical discovery (see
+  [Scan](/guide/scan/)).
 - Filter `--format json`: `score` is a constant `0` in both, but the Go encoder
-  prints `"score": 0` while the Rust encoder prints `"score": 0.0`. The value is
+  printed `"score": 0` while the Rust encoder prints `"score": 0.0`. The value is
   never meaningful today (there is no scoring in filter mode).
 - Task `--json` output (`task list --json`, `task view --json`) ends with a
-  trailing newline in both. That is byte-identical, not a divergence. The
-  note-filter `--format json` output has no trailing newline.
-- `--limit -1` written as two tokens: Go's flag parser accepts the negative
+  trailing newline, matching the baseline byte-for-byte. That is not a
+  divergence. The note-filter `--format json` output has no trailing newline.
+- `--limit -1` written as two tokens: the Go flag parser accepted the negative
   value; Rust's clap treats `-1` as an unexpected argument and exits `2`. Use
-  the equals form, `--limit=-1`, which both accept.
-- Single-dash long flags: Go's flag parser also accepts `-format json`; Rust's
+  the equals form, `--limit=-1`, which both accepted.
+- Single-dash long flags: the Go flag parser also accepted `-format json`; Rust's
   clap does not (exit `2`). Use the double-dash form.
 - Missing scan root: exit `1` with the `mdfu: ` prefix and empty stdout in both.
   The OS-error sentence differs (`os.Lstat` in Go vs the `ignore` crate in Rust).
-- `--help`/`-h` exits `0` in both, but Go writes the help text to stderr and
-  Rust writes it to stdout. Usage-error wording differs between the two flag
-  parsers; the exit codes (`2`) match.
-- `--version` prints the version each build embeds: Go uses the `main.version`
-  `-ldflags` value, Rust uses the Cargo workspace version.
+- `--help`/`-h` exits `0` in both, but the Go binary wrote the help text to
+  stderr and Rust writes it to stdout. Usage-error wording differs between the
+  two flag parsers; the exit codes (`2`) match.
+- `--version` prints the version each build embeds: the Go baseline used a
+  `main.version` `-ldflags` value, Rust uses the Cargo workspace version.
 
 ## Task commands
 

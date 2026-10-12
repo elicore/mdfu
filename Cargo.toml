@@ -1,7 +1,8 @@
-# Cargo workspace for the mdfu Rust port.
+# Cargo workspace for mdfu, at the repository root.
 #
 # Layout (locked by PLAN): core content/logic, ratatui UI, and the `mdfu`
-# binary. The Go implementation stays the reference until cutover.
+# binary. The Go implementation was removed after the parity gate; its
+# frozen baseline lives in PARITY.md and in git history.
 
 [workspace]
 resolver = "2"

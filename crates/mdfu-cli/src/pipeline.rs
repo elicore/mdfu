@@ -348,7 +348,7 @@ fn drive_picker(
 mod tests {
     use super::*;
 
-    const TESTDATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata");
+    const TESTDATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata");
 
     fn options(root: &str) -> Options<'_> {
         Options {

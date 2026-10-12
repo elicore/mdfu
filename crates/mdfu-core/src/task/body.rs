@@ -230,7 +230,7 @@ fn trim_leading_whitespace(line: &str, n: usize) -> &str {
 mod tests {
     use super::*;
 
-    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata/tasks");
+    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/tasks");
 
     fn lines_of(raw: &[&str]) -> Vec<String> {
         raw.iter().map(|line| (*line).to_string()).collect()

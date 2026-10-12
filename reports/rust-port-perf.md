@@ -16,13 +16,13 @@ production `scan`/`parse`/`query`/`search` code paths unchanged.
 | CPU | Intel Core i7-8700 @ 3.20 GHz (6 cores / 12 threads) |
 | RAM | 31,260 MiB |
 | OS / kernel | Linux 6.14.0-37-generic, x86_64 |
-| rustc / cargo | 1.98.1 (Homebrew), pinned by `rust/rust-toolchain.toml` |
+| rustc / cargo | 1.98.1 (Homebrew), pinned by `rust-toolchain.toml` |
 | Build profile | `bench` (release-like, `opt-level = 3`) |
 | Vault location | `/tmp` = **tmpfs** (RAM-backed reads); override with `MDFU_BENCH_ROOT` for disk-backed re-runs |
 
 ## Harness
 
-- `rust/crates/mdfu-core/benches/scan_rank.rs` — timed, dependency-free
+- `crates/mdfu-core/benches/scan_rank.rs` — timed, dependency-free
   harness (`[[bench]] name = "scan_rank", harness = false` in
   `crates/mdfu-core/Cargo.toml`). No Criterion dependency, so the workspace
   manifest stays untouched apart from the one bench entry.
@@ -49,7 +49,7 @@ production `scan`/`parse`/`query`/`search` code paths unchanged.
 - A budget miss prints `MISS` but still exits 0: misses are **recorded**, not
   treated as port blockers.
 
-## Commands (from `rust/`)
+## Commands (from the workspace root)
 
 ```sh
 # Recorded run (defaults: 5,000 files, 20 cold runs, 50 reps/query)

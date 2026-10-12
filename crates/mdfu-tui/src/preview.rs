@@ -476,7 +476,7 @@ mod tests {
     use ratatui::layout::Rect;
 
     fn fixture(name: &str) -> String {
-        let path = format!("{}/../../../testdata/{name}", env!("CARGO_MANIFEST_DIR"));
+        let path = format!("{}/../../testdata/{name}", env!("CARGO_MANIFEST_DIR"));
         std::fs::read_to_string(path).expect("fixture reads")
     }
 

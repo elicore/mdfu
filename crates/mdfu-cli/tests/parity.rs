@@ -5,7 +5,7 @@
 //! `stdout`, `stderr`, the exit code, and the files the command rewrote.
 //!
 //! The Go binary is supplied by [`MDFU_PARITY_GO`]; `scripts/parity.sh` builds
-//! it from the baseline SHA recorded in `rust/PARITY.md` and runs this test in
+//! it from the baseline SHA recorded in `PARITY.md` and runs this test in
 //! release mode. When the variable is unset (a plain `cargo test` without a Go
 //! toolchain) every matrix test prints `PARITY-SKIP` and returns, so the normal
 //! Rust CI stays green; `scripts/parity.sh` always sets it.
@@ -25,7 +25,7 @@
 //! # Deliberate exclusions and normalizations
 //!
 //! TTY box bytes, SGR-exact output, and the interactive TUI are excluded and
-//! recorded in `rust/PARITY.md` (asserted by
+//! recorded in `PARITY.md` (asserted by
 //! [`parity_docs_record_the_non_testable_surfaces`]). Exactly one normalization
 //! is applied, to note-filter JSON stdout: Go `encoding/json` renders the
 //! constant `0` score as `0` while `serde_json` renders `0.0`
@@ -45,7 +45,7 @@ const GO_BIN_ENV: &str = "MDFU_PARITY_GO";
 /// Optional override for the Rust binary; defaults to the cargo-built `mdfu`.
 const RUST_BIN_ENV: &str = "MDFU_PARITY_RUST";
 /// Repository fixture vault (`testdata/`).
-const TESTDATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata");
+const TESTDATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata");
 /// The parity contract document, checked for the exclusion/normalization list.
 const PARITY_MD: &str = include_str!("../../../PARITY.md");
 /// Go's rendering of the constant zero score (see module docs).
@@ -67,7 +67,7 @@ enum Vault {
 }
 
 /// The only normalization this harness may apply, always cited in
-/// `rust/PARITY.md`.
+/// `PARITY.md`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Normalization {
     /// Byte-exact.
@@ -889,7 +889,7 @@ fn parity_note_json_score_normalization_is_the_only_difference() {
     }
     assert!(
         PARITY_MD.contains("score"),
-        "rust/PARITY.md must document the score normalization"
+        "PARITY.md must document the score normalization"
     );
     eprintln!("PARITY-OK score-normalization: raw diff confined to \"score\" lines");
 }
@@ -989,7 +989,7 @@ fn parity_missing_root_is_a_documented_divergence() {
     assert!(rs_err.contains("IO error"), "rust stderr: {rs_err}");
     assert!(
         PARITY_MD.contains("lstat"),
-        "rust/PARITY.md must record the missing-root stderr divergence"
+        "PARITY.md must record the missing-root stderr divergence"
     );
     eprintln!(
         "PARITY-OK missing-root: exit 1 and `mdfu: ` prefix match; text divergence documented"
@@ -1045,12 +1045,12 @@ fn parity_gitignore_default_is_a_documented_divergence() {
 
     assert!(
         PARITY_MD.contains("gitignore"),
-        "rust/PARITY.md must record the gitignore divergence"
+        "PARITY.md must record the gitignore divergence"
     );
     eprintln!("PARITY-OK gitignore: rust excludes by default; --no-ignore byte-identical");
 }
 
-/// `rust/PARITY.md` lists the exact non-testable surfaces and the one
+/// `PARITY.md` lists the exact non-testable surfaces and the one
 /// normalization; this guard fails when the document drifts from the harness.
 #[test]
 fn parity_docs_record_the_non_testable_surfaces() {
@@ -1063,7 +1063,7 @@ fn parity_docs_record_the_non_testable_surfaces() {
     ] {
         assert!(
             PARITY_MD.contains(needle),
-            "rust/PARITY.md is missing the required phrase {needle:?}"
+            "PARITY.md is missing the required phrase {needle:?}"
         );
     }
     eprintln!("PARITY-OK docs: non-testable list and normalization recorded");

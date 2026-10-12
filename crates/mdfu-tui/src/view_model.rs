@@ -1144,7 +1144,7 @@ mod tests {
 
     #[test]
     fn note_row_and_preview_build_for_every_fixture() {
-        let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata"));
+        let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata"));
         let mut count = 0;
         for entry in std::fs::read_dir(dir).expect("testdata reads") {
             let path = entry.expect("entry reads").path();

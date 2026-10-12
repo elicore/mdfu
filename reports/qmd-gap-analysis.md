@@ -49,7 +49,7 @@ network, no daemon, and no models."
 
 1. **Interactive picker.** qmd is strictly non-interactive.
 2. **Typed date range filters.** `created:2026-01..2026-03`, `before:`,
-   `after:`, RFC3339 + granularity (`rust/crates/mdfu-core/src/query.rs:59-70`).
+   `after:`, RFC3339 + granularity (`crates/mdfu-core/src/query.rs:59-70`).
    qmd's filter AST has **no date operator** — you'd be doing string `prefix`
    matches.
 3. **Format-agnostic normalization.** OKF v0.1/v0.2 + Portent/Tolaria → one
@@ -57,7 +57,7 @@ network, no daemon, and no models."
    opt-in namespace.
 4. **Never-fails-hard parse + frozen exit contract.** `ParseError` is a
    `Document` field, not a failure; the 0/1/2 matrix is enforced by
-   `rust/crates/mdfu-cli/tests/parity.rs` with a `--mutate` tamper check.
+   `crates/mdfu-cli/tests/parity.rs` with a `--mutate` tamper check.
 5. **mdtask subsystem.** qmd has nothing resembling `mdfu task` × 10
    subcommands + the `mdfu tasks` TUI + any-checkbox mode.
 6. **Snippets + highlighting.** `output::snippet()` and `highlight_re()` —
@@ -71,7 +71,7 @@ Read directly from source, not assumed from docs.
 
 ### mdfu's actual retrieval path
 
-`rust/crates/mdfu-core/src/search.rs:379-395` (`score_doc`):
+`crates/mdfu-core/src/search.rs:379-395` (`score_doc`):
 
 ```rust
 if searchable.contains(&needle) {
@@ -134,7 +134,7 @@ codes 0/1/2.
 
 ### Confirmed absences
 
-Grep-verified across all of `rust/crates/` — **zero** hits for: `BM25`,
+Grep-verified across all of `crates/` — **zero** hits for: `BM25`,
 `InvertedIndex`, `postings`, `rusqlite`, `sqlite`, `tantivy`, `sled`,
 `Embedding`, `Stemmer`, `stopword`, `Levenshtein`, `trigram`, `Rrf`,
 `reciprocal`, `fusion`, `notify`/`inotify`/`watcher`, `daemon`, `tokio`,
@@ -184,7 +184,7 @@ discarded at the boundary.
 normalize to 0..1, add `--min-score` and an `--explain` JSON block.
 
 ⚠️ **Parity tax:** emitting non-zero scores diverges from the frozen Go
-baseline → recorded divergence + `parity.rs` guard + `rust/PARITY.md` entry.
+baseline → recorded divergence + `parity.rs` guard + `PARITY.md` entry.
 
 ### A2 — Retrieval quality: bare-word scoring has no IDF
 

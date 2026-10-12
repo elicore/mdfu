@@ -37,8 +37,8 @@ reproduced it. There was no earlier point at which a developer could have seen i
 
 - Every workflow that can run on Linux is executable **before** push and stays
   green on `main`.
-- Changes touching `cmd/`, `internal/`, `rust/`, `website/`, `docs/`, or
-  `.github/workflows/` are validated locally first.
+- Changes touching `crates/`, `Cargo.toml`, `PARITY.md`, `scripts/`, `website/`,
+  `docs/`, or `.github/workflows/` are validated locally first.
 - Workflow problems are found in the developer's inner loop, not after merge.
 
 ## Usage
@@ -48,9 +48,8 @@ Docker is required. `act` is auto-installed on first use (Homebrew, then
 
 ```sh
 make act-list          # list workflows/jobs act can run
-make act-ci            # gofmt, vet, race tests, coverage, cross-build matrix
 make act-rust          # Rust workspace: fmt, clippy, tests, release build
-make act-module-guard  # Go module + Rust workspace layout guard
+make act-module-guard  # Rust workspace layout guard
 make act-docs          # Starlight build + internal link check
 make parity            # Go-vs-Rust differential parity harness
 make act-all           # all of the above
@@ -58,12 +57,15 @@ make act-all           # all of the above
 
 `make act-rust` runs `.github/workflows/rust.yml` (`cargo fmt --check`, `cargo
 clippy --all-targets -- -D warnings`, `cargo test`, `cargo build --release`),
-all from the `rust/` workspace. The Rust workflow triggers only on `rust/**`
-and `Cargo.*` changes; `make act-all` includes it.
+all from the workspace root. The Rust workflow triggers on `crates/**`, `Cargo.toml`,
+`Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, and `PARITY.md` changes;
+`make act-all` includes it.
 
 `make parity` is not an `act` target: it runs `scripts/parity.sh`, which builds
-the Go binary from the frozen baseline SHA, builds the Rust release binary, and
-diffs them. A Go toolchain is required.
+the Go binary from the frozen baseline SHA recorded in `PARITY.md`, builds the
+Rust release binary, and diffs them. A Go toolchain is required — but only for
+this target. The Go source exists solely in git history; it is never built as
+part of `mdfu` itself.
 
 Each run executes from a clean temporary context (untracked worktrees and build
 output excluded) while still overlaying your uncommitted changes, so local edits
@@ -87,4 +89,4 @@ locally:
 `release-check.yml` now runs the Rust GoReleaser snapshot (the todo-36 cutover
 promoted the Rust build to the release source); it is previewed with `act
 pull_request -n` rather than a full local run. Release workflows build from
-`rust/`; the Go tree stays the parity reference until todo 37.
+the workspace root at the repository root.

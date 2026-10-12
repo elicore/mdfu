@@ -18,7 +18,7 @@ The picker opens in **list mode**: the search box is hidden and the first line i
 - **`esc` semantics.** In list mode, `esc` with a non-empty query clears it and restores the full list; once the query is empty, `esc` aborts with no output (no `q` key — there are no vim motions either). `ctrl+c` aborts from either mode.
 - **Editing (`e`).** In list mode, `e` opens the focused document in `$EDITOR` (the picker suspends while the editor runs). After the editor exits, the file is re-parsed and the preview refreshes, then the list re-filters. With `$EDITOR` unset or blank, the status bar shows `$EDITOR is not set` and the picker stays open.
 
-## Keybindings (`internal/tui/tui.go:Model.Update`)
+## Keybindings (`crates/mdfu-tui/src/notes/app.rs`)
 
 | Key | Action |
 |---|---|

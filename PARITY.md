@@ -151,7 +151,7 @@ stderr prefix), D2 (unknown token after `mdfu task` is a fuzzy search), D3
 
 `scripts/parity.sh` builds the Go binary from the frozen baseline SHA above
 (via `git archive`, so the Go tree is never modified), builds the Rust release
-binary, and runs `rust/crates/mdfu-cli/tests/parity.rs` against both binaries.
+binary, and runs `crates/mdfu-cli/tests/parity.rs` against both binaries.
 `make parity` is the target; `scripts/parity.sh --mutate` appends one stdout
 byte inside a Go-binary shim and asserts the harness reports `PARITY-DIFF`.
 
@@ -204,7 +204,7 @@ Exactly one normalization is applied, to note-filter `--format json` stdout:
 
 - `"score": 0,` (Go `encoding/json`: float64 zero renders as `0`) is compared
   as `"score": 0.0,` (Rust `serde_json` renders `0.0`). Source:
-  `cmd/mdfu/pipeline.go` and `rust/crates/mdfu-cli/src/pipeline.rs` always set
+  `cmd/mdfu/pipeline.go` and `crates/mdfu-cli/src/pipeline.rs` always set
   `Score: 0`; the value is constant and only its float rendering differs.
   `parity_note_json_score_normalization_is_the_only_difference` proves the raw
   outputs differ *only* on lines containing `"score"`.

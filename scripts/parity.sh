@@ -2,13 +2,13 @@
 #
 # Go-vs-Rust differential parity harness (plan task 32).
 #
-# Builds the Go binary from the frozen baseline SHA recorded in rust/PARITY.md
+# Builds the Go binary from the frozen baseline SHA recorded in PARITY.md
 # (via `git archive`, so the working tree is never touched), builds the Rust
-# release binary, and runs rust/crates/mdfu-cli/tests/parity.rs against both.
+# release binary, and runs crates/mdfu-cli/tests/parity.rs against both.
 # The test compares stdout, stderr, exit code, and rewritten vault bytes for
 # the non-TTY note-filter and task-subcommand surface. TTY box bytes,
 # SGR-exact output, and the interactive TUI are excluded and documented in
-# rust/PARITY.md.
+# PARITY.md.
 #
 #   scripts/parity.sh            harness must report zero diffs
 #   scripts/parity.sh --mutate   append one stdout byte inside a Go shim; the
@@ -37,9 +37,9 @@ command -v cargo >/dev/null || { echo "parity: cargo is required" >&2; exit 1; }
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
-sha="$(sed -n 's/.*Frozen Go baseline SHA: `\([0-9a-f]\{40\}\)`.*/\1/p' rust/PARITY.md | head -n1)"
+sha="$(sed -n 's/.*Frozen Go baseline SHA: `\([0-9a-f]\{40\}\)`.*/\1/p' PARITY.md | head -n1)"
 if [ -z "$sha" ]; then
-  echo "parity: cannot read the frozen baseline SHA from rust/PARITY.md" >&2
+  echo "parity: cannot read the frozen baseline SHA from PARITY.md" >&2
   exit 1
 fi
 head_sha="$(git rev-parse HEAD)"
@@ -65,19 +65,13 @@ git archive "$sha" | tar -x -C "$work/go-src"
 )
 echo "parity: Go binary sha256 $(sha256sum "$work/mdfu-go" | cut -d' ' -f1)"
 
-(
-  cd rust
-  cargo build --release --quiet
-)
-rust_bin="$root/rust/target/release/mdfu"
+cargo build --release --quiet
+rust_bin="$root/target/release/mdfu"
 echo "parity: Rust binary $rust_bin"
 
 run_harness() {
-  (
-    cd rust
-    MDFU_PARITY_GO="$1" MDFU_PARITY_RUST="$rust_bin" \
-      cargo test -p mdfu-cli --release --test parity -- --nocapture
-  )
+  MDFU_PARITY_GO="$1" MDFU_PARITY_RUST="$rust_bin" \
+    cargo test -p mdfu-cli --release --test parity -- --nocapture
 }
 
 if [ "$mode" = mutate ]; then

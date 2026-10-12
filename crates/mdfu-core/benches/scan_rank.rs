@@ -12,7 +12,7 @@
 //! a budget miss prints `MISS` but does **not** change the exit code
 //! (recording, not gating: no index or daemon may be added to hit it).
 //!
-//! Run with `cargo bench -p mdfu-core --bench scan_rank` from `rust/`.
+//! Run with `cargo bench -p mdfu-core --bench scan_rank` from the workspace root.
 //! Environment overrides: `MDFU_BENCH_FILES`, `MDFU_BENCH_DIRS`,
 //! `MDFU_BENCH_COLD_RUNS`, `MDFU_BENCH_KEYSTROKE_REPS`, `MDFU_BENCH_ROOT`,
 //! `MDFU_BENCH_KEEP` (keep the vault), `MDFU_BENCH_JSON` (write machine JSON).

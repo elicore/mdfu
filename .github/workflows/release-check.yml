@@ -1,6 +1,6 @@
 name: Release Check
 
-# Rust snapshot packaging check. Todo 36 promoted the Rust build (rust/) to the
+# Rust snapshot packaging check. Todo 36 promoted the Rust build to the
 # release source, so this replaces the former Go snapshot; never publishes.
 # Verifies the six `mdfu` archives, checksums.txt and the generated Homebrew
 # cask are mutually consistent. rustup + zig + cargo-zigbuild are required by
@@ -15,7 +15,12 @@ on:
       - ".github/workflows/brew.yml"
       - "Casks/**"
       - "LICENSE"
-      - "rust/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "rust-toolchain.toml"
+      - "rustfmt.toml"
+      - "PARITY.md"
   workflow_dispatch:
 
 permissions:

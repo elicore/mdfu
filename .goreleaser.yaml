@@ -1,4 +1,4 @@
-# GoReleaser configuration for `mdfu`, built from the Rust workspace (`rust/`).
+# GoReleaser configuration for `mdfu`, built from the Rust workspace at the repository root.
 #
 # Promoted from `.goreleaser.rust.yaml` in the todo-36 cutover: the Rust build
 # is now the release source for release.yml / release-check.yml / brew.yml /
@@ -24,9 +24,10 @@ builds:
   - id: mdfu
     builder: rust
     binary: mdfu
-    # Cargo workspace root; the workspace has three members, so the CLI crate
-    # must be selected explicitly (GoReleaser also enforces this).
-    dir: rust
+    # Cargo workspace root (repository root); the workspace has three members,
+    # so the CLI crate must be selected explicitly (GoReleaser also enforces
+    # this).
+    dir: .
     flags:
       - --release
       - --package=mdfu-cli

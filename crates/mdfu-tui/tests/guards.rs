@@ -230,7 +230,7 @@ const WATCHED_STRUCTS: &[(&str, &str, &str)] = &[
 ];
 
 /// (struct, field) pairs knowingly without a production reader, each recorded
-/// in `rust/PARITY.md` (todo 6 reconciliation). Wiring one requires dropping
+/// in `PARITY.md` (todo 6 reconciliation). Wiring one requires dropping
 /// it here; adding one requires a matching PARITY.md line.
 const ALLOWLIST_UNREAD: &[(&str, &str)] =
     &[("Theme", "preview_header"), ("Theme", "markdown_style")];
@@ -402,7 +402,7 @@ fn guards_watched_struct_fields_keep_non_test_readers() {
     );
     assert!(
         violations.is_empty(),
-        "watched pub fields without a production reader (wire them or record them in rust/PARITY.md):\n{}",
+        "watched pub fields without a production reader (wire them or record them in PARITY.md):\n{}",
         violations.join("\n")
     );
 }

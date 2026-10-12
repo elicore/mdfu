@@ -1318,7 +1318,7 @@ mod tests {
 
     use super::*;
 
-    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata/tasks");
+    const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/tasks");
 
     const LIST_VAULT: &str = "- [ ] LIST-1 Alpha #one !high\n\
                               - [ ] LIST-2 Beta #one #two !low\n\

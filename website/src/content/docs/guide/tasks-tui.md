@@ -45,7 +45,7 @@ rows are dimmed, and an unresolved `@blocked_by` value is drawn in the blocker
 color. The footer reads `matched/total • blocked:hidden|shown • x:done • t:edit
 • ?:help`, followed by the last status message.
 
-## Keybindings (`internal/tui/tasks_model.go` `DefaultTaskKeyMap`)
+## Keybindings (`crates/mdfu-tui/src/tasks/model.rs`)
 
 | Key | Action |
 |---|---|

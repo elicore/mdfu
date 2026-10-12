@@ -2,7 +2,7 @@
 
 ## Goal
 
-Single static Rust binary `mdfu` for fuzzy-finding markdown by body free text, frontmatter values as free text, and attribute qualifiers. OKF v0.1/v0.2 + Portent/Tolaria via a unified normalized model. Built from the `rust/` Cargo workspace; the Go implementation was removed after the parity gate (`rust/PARITY.md` records the frozen baseline).
+Single static Rust binary `mdfu` for fuzzy-finding markdown by body free text, frontmatter values as free text, and attribute qualifiers. OKF v0.1/v0.2 + Portent/Tolaria via a unified normalized model. Built from the Cargo workspace at the repository root; the Go implementation was removed after the parity gate (`PARITY.md` records the frozen baseline).
 
 Details moved out of this file into the docs site (`website/src/content/docs/`,
 live at <https://elicore.github.io/mdfu/>):
@@ -16,7 +16,7 @@ live at <https://elicore.github.io/mdfu/>):
 - Interactive TUI (default) + positional-query non-interactive filter (fzf-compatible).
 - Single-box syntax: bare words fuzzy-match; `key:value` hard-filter; AND-combined.
 - Unified normalized model, not strict per-format keys.
-- No persistent index, no daemon, no `cgo` by default.
+- No persistent index, no daemon, one statically linked binary.
 - Budgets: 5–10k files, cold `scan+parse` <500ms, per-keystroke `query+rank` <50ms.
 
 ## Roadmap
@@ -24,12 +24,12 @@ live at <https://elicore.github.io/mdfu/>):
 > T1–T8 were written for the Go implementation before the Rust port. T1/T2
 > measurements and T6 landed in Rust (see `reports/rust-port-perf.md`); the
 > entries below are kept as historical roadmap records. New work is tracked in
-> `.omo/plans/` and `rust/PARITY.md`.
+> `.omo/plans/` and `PARITY.md`.
 
 ### Now (P0 — indexless perf, must hold budgets)
 
 - [ ] **T1: Benchmark + profile current path.** 5k synthetic-file corpus; measure cold `scan+parse` and per-keystroke `query+rank`; CPU profile `search.scoreDoc` (`fuzzy.Find` per doc per word vs whole `SearchBlob`). Acceptance: numbers + p50/p95 in PR; bottleneck confirmed or refuted.
-- [ ] **T2: Indexless rank optimization.** Cache lowered `SearchBlob`/tokens at parse time; avoid per-doc filter-map rebuilds; early-exit bare-word AND; reuse query parse per keystroke. Acceptance: T1 corpus meets <50ms/keystroke with no behavior change (`go test ./...` green).
+- [ ] **T2: Indexless rank optimization.** Cache lowered `SearchBlob`/tokens at parse time; avoid per-doc filter-map rebuilds; early-exit bare-word AND; reuse query parse per keystroke. Acceptance: T1 corpus meets <50ms/keystroke with no behavior change (`cargo test --workspace` green).
 - [ ] **T3: Facet pre-index (roaring bitmaps).** Pre-build `value → bitmap` for `tag/type/status` + hot custom keys; `MatchesDoc` becomes bitmap `And/AndNot` before fuzzy scoring. Acceptance: filter-only queries scale with result size, not corpus size; generic `key:value` still falls back to `lookupField`.
 
 ### Next (P1 — only pay if T1/T2 miss)
@@ -45,7 +45,7 @@ live at <https://elicore.github.io/mdfu/>):
 
 ### Delivered
 
-- [x] **T9: mdtask-compatible task CLI + TUI.** `mdfu task` (`list`, `view`/`show`, `open`, `move`, `set`, `ids`, `archive`, `validate`, `install-skills`) plus `mdfu tasks` for an interactive TUI, matching the external `mdtask` format (checkbox headers, `#tag`/`!priority`/`@key:value` metadata, `@blocked_by`, `.mdtaskrc`/`.mdfurc` config) and command surface. Acceptance: engine, CLI, and TUI tests green (`go test ./...`); `mdfu tasks` falls back to `mdfu task list` when stdout is not a TTY.
+- [x] **T9: mdtask-compatible task CLI + TUI.** `mdfu task` (`list`, `view`/`show`, `open`, `move`, `set`, `ids`, `archive`, `validate`, `install-skills`) plus `mdfu tasks` for an interactive TUI, matching the external `mdtask` format (checkbox headers, `#tag`/`!priority`/`@key:value` metadata, `@blocked_by`, `.mdtaskrc`/`.mdfurc` config) and command surface. Acceptance: engine, CLI, and TUI tests green (`cargo test --workspace`); `mdfu tasks` falls back to `mdfu task list` when stdout is not a TTY.
 
 ## Working agreements
 

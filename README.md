@@ -2,7 +2,7 @@
 
 Fuzzy finder for Markdown notes — body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`mdfu <query>`, fzf-compatible).
 
-Requires Rust 1.98.1+ (pinned in `rust/rust-toolchain.toml`) to build from
+Requires Rust 1.98.1+ (pinned in `rust-toolchain.toml`) to build from
 source. Prebuilt binaries are available via Homebrew.
 
 ## Install
@@ -12,8 +12,8 @@ source. Prebuilt binaries are available via Homebrew.
 brew tap elicore/mdfu
 brew install --cask elicore/mdfu/mdfu
 
-# or from source (binary lands in rust/target/release/mdfu)
-git clone https://github.com/elicore/mdfu && cd mdfu/rust && cargo build --release
+# or from source (binary lands in target/release/mdfu)
+git clone https://github.com/elicore/mdfu && cd mdfu && cargo build --release
 ```
 
 ## Quick start
@@ -78,19 +78,18 @@ recognition rules and per-action behaviour.
 ## Develop
 
 ```sh
-cd rust
-cargo build --release          # → rust/target/release/mdfu
+cargo build --release          # → target/release/mdfu
 cargo test --workspace
 cargo fmt --check && cargo clippy --all-targets -- -D warnings
 ```
 
 ### Implementation
 
-`mdfu` is implemented in the `rust/` Cargo workspace: three crates,
-`mdfu-core` (scan/parse/query/rank/output), `mdfu-tui` (ratatui interface), and
-`mdfu-cli` (the `mdfu` binary). The Go implementation was removed after the
-parity gate; its frozen baseline stays in git history and `rust/PARITY.md`
-records the behavioral contract.
+`mdfu` is implemented in the Cargo workspace at the repository root: three
+crates under `crates/` — `mdfu-core` (scan/parse/query/rank/output), `mdfu-tui`
+(ratatui interface), and `mdfu-cli` (the `mdfu` binary). The Go implementation
+was removed after the parity gate; its frozen baseline stays in git history and
+`PARITY.md` records the behavioral contract.
 
 The port targets **behavioral parity**, not byte-identical task tables: non-TTY
 output (including `task list --json`) is byte-compatible, while TTY box-drawing

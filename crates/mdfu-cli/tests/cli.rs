@@ -4,7 +4,7 @@
 //! mode end to end against the shared fixture vault and throwaway vaults.
 //!
 //! The `exit_`, `format_`, `router_`, `tasks_`, and `limit_` tests extend the
-//! matrix over `rust/PARITY.md`:
+//! matrix over `PARITY.md`:
 //!
 //! * the root and task 0/1/2 exit-code rows (E1 through E19 where reachable);
 //! * the `paths`, `json`, and `vimgrep` output shapes, including Go's JSON
@@ -37,7 +37,7 @@ const TASK_VAULT: &str = "- [ ] EXMPL-001 Fix the thing\t\t#launch !high @status
 
 /// The repository fixture vault (`testdata/`), searched by the end-to-end
 /// filter tests.
-const TESTDATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testdata");
+const TESTDATA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata");
 
 fn mdfu() -> Command {
     Command::cargo_bin("mdfu").unwrap()

@@ -33,7 +33,7 @@ Colors are xterm 256-color palette indices, given as strings (quote them in YAML
 | `selected_color` | color | `82` | Multi-selected rows in the result list (bold). |
 | `title_color` | color | `212` | Document title in the preview (bold). |
 | `filename_color` | color | `244` | Filename header at the top of the preview. |
-| `preview_header_color` | color | unset (bold + underline) | Accepted but inert in the Rust port: no renderer reads it (only the theme test does), matching the Go baseline (see the parity notes). |
+| `preview_header_color` | color | unset (bold + underline) | Accepted but inert: no renderer reads it (only the theme test does). The key was inherited from the Go baseline, where it was equally unread. |
 | `frontmatter_key_color` | color | `245` | Labels of the frontmatter rows. |
 | `dim_faint` | bool | `true` | Faint rendering for dimmed text such as status hints. |
 | `pill_foreground` | color | `231` | Tag/list pill text. |

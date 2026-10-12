@@ -156,11 +156,8 @@ mod tests {
     }
 
     fn fixture_path(name: &str) -> std::path::PathBuf {
-        std::path::Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../../testdata/tasks"
-        ))
-        .join(name)
+        std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/tasks"))
+            .join(name)
     }
 
     fn by_id<'a>(tasks: &'a [Task], id: &str) -> &'a Task {

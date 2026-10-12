@@ -26,7 +26,7 @@
       "extra-files": [
         {
           "type": "toml",
-          "path": "rust/Cargo.toml",
+          "path": "Cargo.toml",
           "jsonpath": "$.workspace.package.version"
         }
       ]
