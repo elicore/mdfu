@@ -14,11 +14,26 @@ hero:
       variant: secondary
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
 
 ## What is mdfu?
 
 **mdfu** is a fast, single static Rust binary for fuzzy-finding Markdown notes — by body free text, frontmatter values as free text, and attribute qualifiers. It understands OKF v0.1/v0.2 and Portent/Tolaria frontmatter through one unified normalized model.
+
+<Aside title="v0.4.0 is the Rust rewrite">
+Since **v0.4.0**, `mdfu` is the Rust program: one Cargo workspace at the
+repository root (`mdfu-core`, `mdfu-tui`, `mdfu-cli`), published as prebuilt
+binaries. The Go implementation was deleted once it passed the parity gate.
+
+Nothing changes for users. Non-TTY output — including `mdfu task list --json` —
+is byte-compatible with the frozen Go baseline recorded in `PARITY.md`. Only
+TTY box-drawing glyphs and exact SGR styling differ, because ratatui replaces
+lipgloss. One behavior did change: `--no-ignore` now takes effect, so
+gitignored files are scanned when it is passed. Building from source needs
+Rust 1.98.1+ instead of Go; `make parity` is the only target that still needs
+a Go toolchain. See [Architecture](/reference/architecture/) and
+[History](/project/history/).
+</Aside>
 
 **Why mdfu?**
 

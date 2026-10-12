@@ -5,6 +5,17 @@ description: Completed tracks and milestones — scaffold through docs.
 
 Completed work, kept for reference. Do not add new tasks here — see the [Roadmap](/project/roadmap/).
 
+## Releases
+
+- **0.4.0** (2026-10-12) — the Rust rewrite ships. The Go implementation was
+  deleted after the parity gate; `mdfu` is now one static binary built from the
+  Cargo workspace at the repository root. Non-TTY output stays
+  byte-compatible with the frozen Go baseline, `--no-ignore` now takes effect,
+  and TTY glyphs/SGR follow ratatui instead of lipgloss. See
+  [Architecture](/reference/architecture/).
+- **0.1.0 – 0.3.0** — the Go era. The Rust port landed after `v0.3.0`, so the
+  whole rewrite is what 0.4.0 ships.
+
 ## Tracks (all merged)
 
 - Track A (scaffold+scan): `d2c7a30` — `cmd` skeleton + `internal/scan` walker.

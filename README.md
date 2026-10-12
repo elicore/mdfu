@@ -2,6 +2,18 @@
 
 Fuzzy finder for Markdown notes — body text plus normalized frontmatter (OKF v0.1/v0.2 and Portent/Tolaria) from one fast static binary, interactively (TUI) or pipeably (`mdfu <query>`, fzf-compatible).
 
+> [!IMPORTANT]
+> **Since v0.4.0, `mdfu` is written in Rust.** The binary is built from the
+> Cargo workspace at the repository root (`mdfu-core`, `mdfu-tui`,
+> `mdfu-cli`); the Go implementation was deleted after passing the parity
+> gate. Commands and output are unchanged — non-TTY output, including
+> `mdfu task list --json`, stays byte-compatible with the frozen Go baseline
+> recorded in [`PARITY.md`](./PARITY.md), and only TTY box-drawing glyphs and
+> exact SGR styling differ (ratatui replaces lipgloss). One behavior did
+> change: `--no-ignore` now takes effect, so gitignored files are scanned when
+> it is passed. See [History](https://elicore.github.io/mdfu/project/history/)
+> for the full timeline.
+
 Requires Rust 1.98.1+ (pinned in `rust-toolchain.toml`) to build from
 source. Prebuilt binaries are available via Homebrew.
 
